@@ -199,7 +199,7 @@ async function startCamera() {
   const idx = Number(els.devSelect.value);
   if (!Number.isFinite(idx) || devices.length === 0) { await refreshDevices(); }
   const device = devices[Number(els.devSelect.value)] || null;
-  const constraints = { video: { width: { ideal: 3840 }, height: { ideal: 2160 } } };
+  const constraints = { video: { width: { ideal: 3840 } } }; // presupuesto de píxeles solo, sin ratio: el aspect lo mide getSettings (AGENTS.md)
   if (device) { constraints.video.deviceId = { exact: device.deviceId }; }
   try {
     stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -298,6 +298,8 @@ function renderProfileLog(s, c, aspect, capRows) {
     "settings verificados : " + JSON.stringify({ width: s.width, height: s.height, frameRate: s.frameRate, facingMode: s.facingMode, deviceId: s.deviceId ? s.deviceId.slice(0,12) + "…" : null }),
     "capabilities raw   : " + JSON.stringify(Object.fromEntries(capRows.slice(0,8)))
   ];
+  const wide = Math.max(s.width || 0, s.height || 0);
+  if (wide > 3500) { lines.push("⚠ cap resolución ~3500px superado (this device): long side " + wide + "px — anotar en resultados"); }
   els.cameraProfileLog.textContent = lines.join("\n");
 }
 

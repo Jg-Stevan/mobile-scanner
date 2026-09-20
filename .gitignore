@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env*
 .opencode/.secrets/
+.certs/
 
 .DS_Store
 Thumbs.db

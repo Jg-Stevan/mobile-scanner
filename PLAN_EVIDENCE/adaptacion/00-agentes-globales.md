@@ -20,11 +20,16 @@ Verificación de copia: hash global == hash local para los 7 (diff vacío).
 ## T0.4 PRUEBA DE MODELOS intacta — HECHO
 `.opencode/agents/` local conserva sus 7 archivos; no se borró ni modificó ninguno.
 
-## T0.5 REINICIO + `opencode agent list` — ⏳ PENDIENTE (checkpoint humano/TUI)
-No ejecutable desde esta sesión CLI. Para verificar:
-1. Reiniciar opencode.
-2. Desde `C:\Users\JG\projects\mobile-scanner` ejecutar: `opencode agent list`.
-3. Esperado: **8 agentes** (orquestador + explorador + implementador-backend + revisor + revisor-b + 3 fallbacks).
+## T0.5 REINICIO + `opencode agent list` — HECHO (verificado 2026-09-20 tras reinicio)
+Tras reiniciar opencode, `opencode agent list` devuelve **8 agentes globales propios** junto a
+los built-in (build, compaction, plan, summary, title, explore, general):
+
+`explorador`, `explorador-fallback`, `implementador-backend`, `implementador-fallback`,
+`orquestador`, `revisor`, `revisor-b`, `revisor-fallback`.
+
+Permisos confirmados visibles por agente (p. ej. `implementador-backend` expone
+`npm test *`, `npm run dev *`, `npm run build *`, `npx tsc *`, `npx vitest *` =
+los añadidos en T1.3; `orquestador` = task allow / read allow / edit+bash deny).
 
 ## T0.6 Verificación — HECHO (automatizable)
 - `PLAN_MAESTRO.md` presente en la raíz.
