@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Spike F0 — Digitalizador (diagnóstico de dispositivos)</title>
+<style>
+  :root { --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; --muted:#57606a; --line:#d0d7de; --bg:#f6f8fa; }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:0; padding:16px;
+         background:var(--bg); color:#1f2328; }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:15px; margin:22px 0 8px; border-bottom:1px solid var(--line); padding-bottom:4px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:8px; padding:12px; margin:10px 0; }
+  .grid { display:grid; gap:10px; }
+  @media (min-width:720px){ .grid { grid-template-columns:1fr 1fr; } }
+  label { font-weight:600; display:block; margin:8px 0 3px; font-size:12.5px; color:#24292f; }
+  button { font:inherit; padding:8px 12px; border-radius:6px; border:1px solid var(--line); background:#f3f4f6;
+           cursor:pointer; margin:2px 4px 2px 0; }
+  button:active { transform:translateY(1px); }
+  button.primary { background:#0969da; border-color:#0969da; color:#fff; }
+  button.danger { background:#cf222e; border-color:#cf222e; color:#fff; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  table { border-collapse:collapse; width:100%; margin:6px 0; font-size:12.5px; }
+  th,td { border:1px solid var(--line); padding:4px 6px; text-align:left; vertical-align:top; }
+  th { background:#f6f8fa; font-weight:600; }
+  code { background:#eff1f3; border-radius:3px; padding:0 4px; font-size:12px; }
+  .mono { font-family:Consolas, Menlo, monospace; font-size:12px; white-space:pre-wrap; word-break:break-all;
+          background:#0d1117; color:#c9d1d9; border-radius:6px; padding:10px; max-height:220px; overflow:auto; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11.5px; font-weight:600; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); } .muted { color:var(--muted); }
+  .kv { display:flex; justify-content:space-between; border-bottom:1px dashed var(--line); padding:3px 0; }
+  .volver { display:flex; justify-content:space-between; padding:3px 0; }
+  .vwrap { position:relative; width:100%; background:#000; border-radius:8px; overflow:hidden; aspect-ratio:3/4; }
+  video, canvas.video-overlay { position:absolute; inset:0; width:100%; height:100%; }
+  video { object-fit:contain; }
+  #dpiCanvas { touch-action:none; }
+  input[type=file] { font:inherit; }
+  .chk { display:block; padding:3px 0; }
+  .chk input { margin-right:6px; }
+  .small { font-size:12px; }
+  #torchBtn.on { background:#9a6700; color:#fff; }
+</style>
+</head>
+<body>
+<h1>Spike F0 — Diagnóstico de captura por dispositivo</h1>
+<p class="small">Instrumento generado por el pipeline (AGENTS.md · skill <code>spike-dispositivos</code>).
+La ejecución es <b>humana</b> en 2-3 dispositivos reales, incluyendo iPhone físico
+(getUserMedia no se valida sin hardware). Nada se hardcodea: toda resolución, capability o DPI
+se mide aquí. Fuente de verdad: PLAN_MAESTRO v3.0 §4 y §5-F0.</p>
+
+<div class="card">
+  <h2>Cámara</h2>
+  <label for="devSelect">Cámara (via enumerateDevices — elegir la principal trasera EXPLÍCITA; no confiar en facingMode)</label>
+  <button id="refreshDev" class="primary">Listar cámaras</button>
+  <select id="devSelect" style="min-width:70%; max-width:100%; font:inherit; padding:6px;"></select>
+  <div style="margin-top:8px">
+    <button id="startBtn" class="primary">Iniciar preview</button>
+    <button id="stopBtn">Detener</button>
+    <button id="torchBtn" title="applyConstraints advanced torch (solo si capabilities.torch true)">Torch</button>
+  </div>
+  <div class="vwrap" style="margin-top:10px">
+    <video id="video" playsinline muted autoplay style="display:none"></video>
+    <canvas id="dpiCanvas" class="video-overlay" style="display:none"></canvas>
+  </div>
+  <div class="kv"><span>Estado preview</span><span id="previewState" class="muted">sin iniciar</span></div>
+  <div class="kv"><span>Frames vistos (rVFC/rAF)</span><span id="frameCount">0</span></div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Diagnóstico en vivo — getSettings() real</h2>
+    <div id="settingsBox"><span class="muted">Inicia el preview para medir.</span></div>
+  </div>
+  <div class="card">
+    <h2>Diagnóstico — getCapabilities()</h2>
+    <div id="capsBox"><span class="muted">Inicia el preview para medir.</span></div>
+    <label>Torch (applyConstraints if exists)</label>
+    <div id="torchResult" class="muted">—</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>CameraProfile log (formato del plan)</h2>
+  <pre id="cameraProfileLog" class="mono">— rellenar tras iniciar/medir —</pre>
+  <button id="copyProfile">Copiar perfil</button>
+  <button id="exportReport">Exportar reporte (.md)</button>
+</div>
+
+<div class="card">
+  <h2>Test de rutas de captura</h2>
+  <table>
+    <thead><tr><th>Ruta</th><th>Divisa/test</th><th>Resultado (medido)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>A</b> takePhoto<br><span class="muted">Chrome/Android</span></td>
+        <td><button id="testTakePhoto">Ejecutar 5 tentativas</button><br>
+            <label class="small">tentativas</label><input id="takePhotoN" type="number" value="5" min="1" max="10" style="width:70px"></td>
+        <td><div id="takePhotoResult">—</div></td>
+      </tr>
+      <tr>
+        <td><b>B</b> drawImage track<br><span class="muted">Safari/iOS auto</span></td>
+        <td><button id="testDrawImage">Capturar fotograma</button></td>
+        <td><div id="drawImageResult">—</div></td>
+      </tr>
+      <tr>
+        <td><b>C</b> input capture<br><span class="muted">Safari/iOS manual FULL-RES</span></td>
+        <td><input type="file" accept="image/*" capture="environment" id="inputCapture" multiple><br>
+            <span class="small">Toque el botón "Elegir archivos" y tome 1+ fotos con la cámara nativa.</span></td>
+        <td><div id="inputCaptureResult">—</div></td>
+      </tr>
+      <tr>
+        <td><b>EXIF</b> createImageBitmap<br><span class="muted">Safari</span></td>
+        <td>Se ejecuta sobre cada archivo de la ruta C.<br><span class="small">imageOrientation:'from-image'</span></td>
+        <td><div id="exifResult">—</div></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Medición de DPI runtime (cuadrilátero manual sobre A4)</h2>
+  <p class="small">Coloque una hoja <b>A4 llenando el encuadre</b>. Arrastre las 4 esquinas del
+  polígono sobre la hoja; al confirmar se calcula <code>anchoQuadPx / anchoPapel(in)</code> en la
+  resolución nativa del track. Esto mide DPI real de la ruta B/video.</p>
+  <div class="kv"><span>Anchura de papel de referencia (in)</span>
+    <span><input id="paperWidthIn" type="number" step="0.01" value="8.27" style="width:90px"> in <span class="muted">(A4 = 8.27)</span></span></div>
+  <div>
+    <button id="dpiReset" class="danger">Reiniciar esquinas</button>
+    <button id="dpiCompute" class="primary">Calcular DPI</button>
+  </div>
+  <table>
+    <thead><tr><th>Variable</th><th>Valor medido</th></tr></thead>
+    <tbody>
+      <tr><td>Lado superior (px nativos)</td><td id="vdpiTop">—</td></tr>
+      <tr><td>Lado inferior (px nativos)</td><td id="vdpiBottom">—</td></tr>
+      <tr><td>anchoQuadPx (media de lados)</td><td id="vdpiWidth">—</td></tr>
+      <tr><td>DPI runtime (anchoQuadPx / papel)</td><td id="vdpiDpi" style="font-weight:700">—</td></tr>
+    </tbody>
+  </table>
+  <p class="small warn">Referencia del PLAN_MAESTRO §4 (NO es un valor supuesto: se mide): se
+  espera ~360 DPI en Android takePhoto; ~130-165 DPI en iOS track 1080p; ~260-330 si getSettings()
+  confirma 4K; &gt;300 DPI en input capture manual. Este instrumento solo reporta lo medido.</p>
+</div>
+
+<div class="card">
+  <h2>Checklist del spike (§5-F0)</h2>
+  <label class="chk"><input type="checkbox" data-chk="getSettings4k"> getSettings(): ¿track 4K disponible en iOS moderno? (define la tabla de DPI real)</label>
+  <label class="chk"><input type="checkbox" data-chk="takePhotoOk"> takePhoto(): resolución, latencia y fallos por dispositivo</label>
+  <label class="chk"><input type="checkbox" data-chk="inputOneOrMany"> iOS: ¿input capture permite 1 foto por gesto o varias? (define el flujo multipágina)</label>
+  <label class="chk"><input type="checkbox" data-chk="exifOk"> createImageBitmap(blob, {imageOrientation:'from-image'}) en Safari</label>
+  <label class="chk"><input type="checkbox" data-chk="caps"> Capabilities: torch, focusMode, teleobjetivo/lente principal (¿enumerateDevices las lista?)</label>
+  <div style="margin-top:10px"><button id="exportReport2" class="primary">Exportar reporte (.md)</button></div>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+const els = {
+  video: $("video"), dpiCanvas: $("dpiCanvas"), ctx: $("dpiCanvas").getContext("2d"),
+  previewState: $("previewState"), frameCount: $("frameCount"),
+  settingsBox: $("settingsBox"), capsBox: $("capsBox"), torchResult: $("torchResult"),
+  cameraProfileLog: $("cameraProfileLog"),
+  takePhotoResult: $("takePhotoResult"), drawImageResult: $("drawImageResult"),
+  inputCaptureResult: $("inputCaptureResult"), exifResult: $("exifResult"),
+  vdpiTop: $("vdpiTop"), vdpiBottom: $("vdpiBottom"), vdpiWidth: $("vdpiWidth"), vdpiDpi: $("vdpiDpi"),
+  devSelect: $("devSelect"),
+};
+
+let stream = null, track = null, frameCount = 0, rafId = 0;
+let devices = [];
+const quad = [ {x:.28,y:.22},{x:.72,y:.22},{x:.72,y:.78},{x:.28,y:.78} ]; // esquinas TL TR BR BL (frac del track)
+let quadDrag = -1;
+
+// ---------- Cámaras ----------
+async function refreshDevices() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+    alert("Este navegador no soporta enumerateDevices.");
+    return;
+  }
+  await navigator.mediaDevices.getUserMedia({ video: true }).then(() => {}).catch(() => {});
+  devices = await navigator.mediaDevices.enumerateDevices();
+  devices = devices.filter(d => d.kind === "videoinput");
+  const sel = els.devSelect;
+  sel.innerHTML = "";
+  devices.forEach((d, i) => {
+    const opt = document.createElement("option");
+    const label = d.label || `device-${i} (sin etiqueta: conceda permiso)`;
+    opt.value = String(i); opt.text = label;
+    sel.appendChild(opt);
+  });
+  if (devices.length === 0) { sel.innerHTML = "<option>Sin cámaras detectadas</option>"; }
+}
+
+$("refreshDev").addEventListener("click", refreshDevices);
+
+async function startCamera() {
+  if (stream) { stopCamera(); }
+  const idx = Number(els.devSelect.value);
+  if (!Number.isFinite(idx) || devices.length === 0) { await refreshDevices(); }
+  const device = devices[Number(els.devSelect.value)] || null;
+  const constraints = { video: { width: { ideal: 3840 }, height: { ideal: 2160 } } };
+  if (device) { constraints.video.deviceId = { exact: device.deviceId }; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (err) {
+    if (device) {
+      try {
+        delete constraints.video.deviceId;
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (err2) {
+        els.previewState.textContent = "fallo: " + err2.name;
+        els.previewState.classList.add("bad");
+        return;
+      }
+    } else {
+      els.previewState.textContent = "fallo: " + err.name;
+      els.previewState.classList.add("bad");
+      return;
+    }
+  }
+  track = stream.getVideoTracks()[0];
+  els.video.srcObject = stream;
+  els.video.style.display = "block";
+  els.dpiCanvas.style.display = "block";
+  try { await els.video.play(); } catch (e) { /* autoplay puede fallar en iOS si muted off */ }
+  els.previewState.textContent = "activo (" + (device && device.label ? device.label : "track " + track.id.slice(0,8)) + ")";
+  els.previewState.classList.remove("bad","muted");
+
+  drawQuadInit();
+  startFrameLoop();
+  updateDiagnostics();
+}
+
+function stopCamera() {
+  if (rafId) cancelAnimationFrame(rafId);
+  if (track) { track.stop(); track = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  els.video.srcObject = null; els.video.style.display = "none"; els.dpiCanvas.style.display = "none";
+  els.previewState.textContent = "detenido"; els.previewState.classList.add("muted");
+}
+
+$("startBtn").addEventListener("click", startCamera);
+$("stopBtn").addEventListener("click", stopCamera);
+
+// ---------- Bucle de frames: rVFC con fallback rAF ----------
+function onFrame() {
+  frameCount++; els.frameCount.textContent = frameCount;
+  rafId = requestAnimationFrame(onFrame);
+}
+function startFrameLoop() {
+  if ("requestVideoFrameCallback" in els.video) {
+    const cb = () => { onFrame(); els.video.requestVideoFrameCallback(cb); };
+    els.video.requestVideoFrameCallback(cb);
+  } else {
+    rafId = requestAnimationFrame(onFrame);
+  }
+}
+
+// ---------- Diagnóstico ----------
+function updateDiagnostics() {
+  if (!track) return;
+  const s = track.getSettings();
+  const c = track.getCapabilities ? track.getCapabilities() : {};
+  const aspect = (s.width && s.height) ? (s.width / s.height).toFixed(4) : "—";
+  els.settingsBox.innerHTML = "";
+  for (const k of ["deviceId","groupId","width","height","frameRate","aspectRatio","facingMode","resizeMode","whiteBalanceMode","exposureMode","focusMode"]) {
+    if (s[k] !== undefined) {
+      const row = document.createElement("div"); row.className = "kv";
+      row.innerHTML = "<span>" + k + "</span><code>" + s[k] + "</code>";
+      els.settingsBox.appendChild(row);
+    }
+  }
+  els.capsBox.innerHTML = "";
+  const capRows = [];
+  for (const k of ["torch","zoom","brightness","contrast","saturation","sharpness","focusMode","exposureMode","whiteBalanceMode","frameRate","width","height","exposureCompensation","colorTemperature"]) {
+    if (c[k] !== undefined) {
+      const v = JSON.stringify(c[k]);
+      capRows.push({k,v});
+      const row = document.createElement("div"); row.className = "kv";
+      row.innerHTML = "<span>" + k + "</span><code>" + v + "</code>";
+      els.capsBox.appendChild(row);
+    }
+  }
+  if (c.torch) { $("torchBtn").classList.add("torch-ok"); }
+  renderProfileLog(s, c, aspect, capRows);
+}
+
+function renderProfileLog(s, c, aspect, capRows) {
+  const lines = [
+    "deviceLabel        : " + (els.devSelect.selectedOptions[0] ? els.devSelect.selectedOptions[0].text : "—"),
+    "track.width x height : " + (s.width || "—") + " x " + (s.height || "—"),
+    "aspect ratio       : " + aspect,
+    "capabilities.torch : " + String(!!c.torch),
+    "capabilities.focusMode : " + (c.focusMode ? JSON.stringify(c.focusMode) : "—"),
+    "focus tele/main list ?: (manual) ver enumerateDevices",
+    "dpiRuntime         : (medir abajo con el quad)",
+    "settings verificados : " + JSON.stringify({ width: s.width, height: s.height, frameRate: s.frameRate, facingMode: s.facingMode, deviceId: s.deviceId ? s.deviceId.slice(0,12) + "…" : null }),
+    "capabilities raw   : " + JSON.stringify(Object.fromEntries(capRows.slice(0,8)))
+  ];
+  els.cameraProfileLog.textContent = lines.join("\n");
+}
+
+$("copyProfile").addEventListener("click", () => { navigator.clipboard.writeText(els.cameraProfileLog.textContent); });
+
+// ---------- Torch ----------
+$("torchBtn").addEventListener("click", async () => {
+  if (!track) return;
+  const c = track.getCapabilities ? track.getCapabilities() : {};
+  if (!c.torch) { els.torchResult.textContent = "capabilities.torch no existe — degradación silenciosa (CLAHE posterior mitiga, ver skill ios-camera-quirks)"; return; }
+  const on = $("torchBtn").classList.toggle("on");
+  try {
+    await track.applyConstraints({ advanced: [{ torch: on }] });
+    els.torchResult.textContent = "torch " + (on ? "ON" : "OFF") + " (applyConstraints)";
+  } catch (e) {
+    $("torchBtn").classList.toggle("on");
+    els.torchResult.textContent = "applyConstraints torch falló: " + (e.name || e.message) + " — degradación silenciosa";
+  }
+});
+
+// ---------- Ruta A: takePhoto ----------
+$("testTakePhoto").addEventListener("click", async () => {
+  const out = els.takePhotoResult; out.textContent = "ejecutando…";
+  if (!track) { out.innerHTML = '<span class="bad">Sin cámara activa.</span>'; return; }
+  if (!("ImageCapture" in window)) { out.innerHTML = '<span class="bad">ImageCapture no existe en este navegador (ruta A no aplica aquí).</span>'; return; }
+  const n = Math.max(1, Math.min(10, Number($("takePhotoN").value) || 5));
+  const ic = new ImageCapture(track);
+  const latencies = [], dims = new Set(), failures = [];
+  for (let i = 0; i < n; i++) {
+    const t0 = performance.now();
+    try {
+      const blob = await ic.takePhoto();
+      latencies.push(performance.now() - t0);
+      const jpg = await createImageBitmap(blob, { imageOrientation: "from-image" }).catch(() => createImageBitmap(blob));
+      dims.add(jpg.width + "x" + jpg.height);
+    } catch (e) { failures.push(e.name || String(e)); }
+  }
+  out.innerHTML = ""
+    + "latencia media: <b>" + (latencies.length ? (latencies.reduce((a,b)=>a+b,0)/latencies.length).toFixed(0) + " ms" : "—") + "</b><br>"
+    + "resoluciones: <b>" + ([...dims].join(", ") || "—") + "</b><br>"
+    + "fallos: " + failures.length + "/" + n + (failures.length ? " (" + [...new Set(failures)].join("; ") + ")" : "");
+});
+
+// ---------- Ruta B: drawImage ----------
+$("testDrawImage").addEventListener("click", async () => {
+  const out = els.drawImageResult; out.textContent = "capturando…";
+  if (!track) { out.innerHTML = '<span class="bad">Sin cámara activa.</span>'; return; }
+  const s = track.getSettings();
+  const w = s.width || els.video.videoWidth, h = s.height || els.video.videoHeight;
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+  cv.getContext("2d").drawImage(els.video, 0, 0, w, h);
+  const blob = await new Promise(r => cv.toBlob(r, "image/jpeg", 0.92));
+  out.innerHTML = "resolución nativa capturada: <b>" + w + "x" + h + "</b><br>"
+    + "tamaño (JPEG q92): <b>" + (blob.size / 1024).toFixed(1) + " KB</b>";
+});
+
+// ---------- Ruta C: input capture + EXIF ----------
+$("inputCapture").addEventListener("change", async (e) => {
+  const files = Array.from(e.target.files || []);
+  const out = els.inputCaptureResult, ex = els.exifResult;
+  if (!files.length) { out.textContent = "sin archivos"; return; }
+  const dims = [];
+  const exifRows = [];
+  for (const f of files) {
+    try {
+      const bmp = await createImageBitmap(f, { imageOrientation: "from-image" });
+      dims.push(bmp.width + "x" + bmp.height);
+      exifRows.push("OK " + bmp.width + "x" + bmp.height);
+      bmp.close();
+    } catch (err) {
+      exifRows.push("FALLO (" + (err.name || err.message) + ")");
+    }
+  }
+  out.innerHTML = "fotos por gesto: <b>" + files.length + "</b> (¿1 o varias?)<br>"
+    + "resoluciones: <b>" + [...new Set(dims)].join(", ") + "</b>";
+  ex.innerHTML = exifRows.join("<br>") || "—";
+  e.target.value = "";
+});
+
+// ---------- DPI runtime: quad manual sobre el video ----------
+function drawQuadInit() {
+  const c = els.ctx; const cv = els.dpiCanvas;
+  function onSize() {
+    const vcw = cv.clientWidth, vch = cv.clientHeight;
+    if (cv.width !== vcw || cv.height !== vch) { cv.width = vcw; cv.height = vch; }
+    drawQuad();
+  }
+  onSize();
+  const ro = new ResizeObserver(onSize); ro.observe(cv);
+}
+function aspectOf() { return els.video.videoWidth ? els.video.videoWidth / els.video.videoHeight : 0; }
+function displayRect() {
+  const cw = els.dpiCanvas.clientWidth, ch = els.dpiCanvas.clientHeight;
+  const a = aspectOf(); let w, h;
+  if (!a) return { x: 0, y: 0, w: cw, h: ch };
+  if (cw / ch > a) { h = ch; w = ch * a; } else { w = cw; h = cw / a; }
+  return { x: (cw - w) / 2, y: (ch - h) / 2, w, h };
+}
+function disp2native(dx, dy) {
+  const r = displayRect(); const nw = els.video.videoWidth, nh = els.video.videoHeight;
+  return { x: (dx - r.x) / r.w * nw, y: (dy - r.y) / r.h * nh };
+}
+function native2disp(nx, ny) {
+  const r = displayRect(); const nw = els.video.videoWidth, nh = els.video.videoHeight;
+  return { x: r.x + nx / nw * r.w, y: r.y + ny / nh * r.h };
+}
+function drawQuad() {
+  const c = els.ctx, cv = els.dpiCanvas;
+  c.clearRect(0, 0, cv.width, cv.height);
+  if (!els.video.videoWidth) return;
+  const r = displayRect();
+  c.strokeStyle = "rgba(255,255,255,.25)"; c.strokeRect(r.x, r.y, r.w, r.h);
+  c.strokeStyle = "#2da44e"; c.lineWidth = 2;
+  c.beginPath();
+  quad.forEach((p, i) => { const d = native2disp(p.x, p.y); i ? c.lineTo(d.x, d.y) : c.moveTo(d.x, d.y); });
+  c.closePath(); c.stroke();
+  c.fillStyle = "#2da44e";
+  quad.forEach(p => { const d = native2disp(p.x, p.y); c.beginPath(); c.arc(d.x, d.y, 7, 0, Math.PI*2); c.fill(); });
+}
+function hitTest(px, py) {
+  let best = -1, bd = 8;
+  quad.forEach((p, i) => { const d = native2disp(p.x, p.y); const dist = Math.hypot(px - d.x, py - d.y); if (dist < bd) { bd = dist; best = i; } });
+  return best;
+}
+function onPointerDown(e) { const r = els.dpiCanvas.getBoundingClientRect(); quadDrag = hitTest(e.clientX - r.left, e.clientY - r.top); }
+function onPointerMove(e) {
+  if (quadDrag < 0) return;
+  const r = els.dpiCanvas.getBoundingClientRect();
+  const n = disp2native(e.clientX - r.left, e.clientY - r.top);
+  quad[quadDrag].x = Math.min(1, Math.max(0, n.x / els.video.videoWidth));
+  quad[quadDrag].y = Math.min(1, Math.max(0, n.y / els.video.videoHeight));
+  drawQuad();
+}
+function onPointerUp() { quadDrag = -1; }
+const cvs = els.dpiCanvas;
+cvs.addEventListener("pointerdown", onPointerDown);
+cvs.addEventListener("pointermove", onPointerMove);
+window.addEventListener("pointerup", onPointerUp);
+
+$("dpiReset").addEventListener("click", () => { quad.splice(0, quad.length, {x:.28,y:.22},{x:.72,y:.22},{x:.72,y:.78},{x:.28,y:.78}); clearDpi(); drawQuad(); });
+
+function clearDpi() { for (const id of ["vdpiTop","vdpiBottom","vdpiWidth","vdpiDpi"]) $(id).textContent = "—"; }
+
+$("dpiCompute").addEventListener("click", () => {
+  if (!els.video.videoWidth) { alert("Inicia la cámara primero."); return; }
+  const nw = els.video.videoWidth;
+  const dx = Math.hypot(quad[1].x - quad[0].x, quad[1].y - quad[0].y) * nw;
+  const bx = Math.hypot(quad[2].x - quad[3].x, quad[2].y - quad[3].y) * nw;
+  const anchoQuadPx = (dx + bx) / 2;
+  const paperIn = Number($("paperWidthIn").value) || 8.27;
+  els.vdpiTop.textContent = dx.toFixed(1) + " px";
+  els.vdpiBottom.textContent = bx.toFixed(1) + " px";
+  els.vdpiWidth.textContent = anchoQuadPx.toFixed(1) + " px";
+  els.vdpiDpi.textContent = (anchoQuadPx / paperIn).toFixed(0) + " DPI";
+});
+
+// ---------- Checklist + reporte ----------
+function collectReport(ml) {
+  const s = track ? track.getSettings() : {};
+  const rows = [
+    "# Reporte spike F0 — " + (new Date().toISOString()),
+    "",
+    "## Diagnosticados",
+    "- getSettings: " + JSON.stringify({ width: s.width, height: s.height, frameRate: s.frameRate, facingMode: s.facingMode }),
+    "- takePhoto: " + els.takePhotoResult.textContent,
+    "- drawImage: " + els.drawImageResult.textContent,
+    "- input capture: " + els.inputCaptureResult.textContent,
+    "- EXIF createImageBitmap: " + els.exifResult.textContent,
+    "- DPI runtime medido: " + els.vdpiDpi.textContent + " (anchoQuadPx=" + els.vdpiWidth.textContent + ", papel=" + ($("paperWidthIn").value || 8.27) + " in)",
+    "",
+    "- CameraProfile log:",
+    ...els.cameraProfileLog.textContent.split("\n").map(l => "  " + l),
+    "",
+    "## Checklist",
+  ];
+  document.querySelectorAll("[data-chk]").forEach(c => rows.push("- " + (c.checked ? "[x]" : "[ ]") + " " + c.dataset.chk));
+  return rows.join("\n");
+}
+function downloadReport() {
+  const blob = new Blob([collectReport()], { type: "text/markdown" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "spike-reporte-" + Date.now() + ".md";
+  a.click(); URL.revokeObjectURL(a.href);
+}
+$("exportReport").addEventListener("click", downloadReport);
+$("exportReport2").addEventListener("click", downloadReport);
+
+refreshDevices();
+</script>
+</body>
+</html>
