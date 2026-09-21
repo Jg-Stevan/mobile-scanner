@@ -15,13 +15,15 @@
   geometry.ts (8 funciones + 6 constantes exactas, gate aspect ratios F3 blindado) +
   20/20 tests verdes, cobertura geometry.ts 94.69% líneas, tsc limpio.
   Evidencia en `PLAN_EVIDENCE/2026-09-21-T2-core/`.
-
-- **T1-R2 implementada (2026-09-21 · pendiente /ship doble revisor):** spike.html — fix
+- **T1-R2 cerrada (2026-09-21 · /ship doble APROBADO):** spike.html — fix
   quad native2disp (drawQuad/hitTest multiplican fracción × nativo; guard `!nw||!nh`),
   leak getUserMedia en refreshDevices (tracks detenidos), CSS `#torchBtn.torch-ok`.
-  20/20 tests, tsc limpio, verificación Playwright: esquinas spread (362,590)–(931,1134),
-  pre-fix colapsaban a (1,378); drag con 0 px error nativo. Evidencia en
-  `PLAN_EVIDENCE/T1-R2/` (screenshot + assertions.json).
+  20/20 tests, tsc limpio, verificación Playwright local + deploy: esquinas spread,
+  pre-fix colapsaban; drag 0 px error. Evidencia en `PLAN_EVIDENCE/T1-R2/`.
+- **T1-R3 cerrada (2026-09-21):** Deploy a GitHub Pages + verificación HTTPS pública.
+  URL: https://jg-stevan.github.io/mobile-scanner/spike.html
+  - Spike funcional: cámara fake activa (640×480), panel DPI carta 8.5, quad 6122 px verdes (no colapsado).
+  - Commit cfa60e1 + push + Pages activo (main/root). Evidencia en `PLAN_EVIDENCE/T1-R3/`.
 
 ## Tareas en Progreso
 - _F0 spike: instrumento HTML generado, pendiente ejecución HUMANA en 2-3 dispositivos reales (incl. iPhone físico)._

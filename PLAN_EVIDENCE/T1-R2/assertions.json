@@ -1,0 +1,37 @@
+{
+  "tarea": "T1-R2",
+  "archivo": "spike.html",
+  "fecha": "2026-09-21",
+  "entorno": "Chromium (Playwright MCP) + servidor http://127.0.0.1:8765 — camera VGA WebCam (640x480) fake/real del harness",
+  "ediciones": {
+    "1_drawQuad_hitTest": "native2disp(p.x*nw, p.y*nh) con guard !nw||!nh — fraccion x nativo antes de dividir",
+    "2_refreshDevices_leak": "getUserMedia().catch(()=>null) + tmp.getTracks().forEach(t=>t.stop())",
+    "3_torch-css": "#torchBtn.torch-ok { background:#22c55e; } (clase ya existia en updateDiagnostics)"
+  },
+  "verificacion_playwright": {
+    "video": "640x480",
+    "canvas": "1293x1724",
+    "displayRect": { "x": 0, "y": 377, "w": 1293, "h": 970 },
+    "quad_con_fix": [
+      { "fx": 0.28, "fy": 0.22, "display": { "x": 362, "y": 590 } },
+      { "fx": 0.72, "fy": 0.22, "display": { "x": 931, "y": 590 } },
+      { "fx": 0.72, "fy": 0.78, "display": { "x": 931, "y": 1134 } },
+      { "fx": 0.28, "fy": 0.78, "display": { "x": 362, "y": 1134 } }
+    ],
+    "quad_sin_fix_colapsado": [
+      { "x": 1, "y": 378 }, { "x": 1, "y": 378 }, { "x": 1, "y": 379 }, { "x": 1, "y": 379 }
+    ],
+    "asserts": [
+      { "id": "corner-spread", "check": "4 esquinas repartidas por el encuadre", "pass": true },
+      { "id": "no-collapse-TL", "check": "esquina real (r.x,r.y) sin stroke verde (0 px verdes)", "pass": true },
+      { "id": "handle-TL-gly", "check": "handle TL dibujado en (362,590) — 144 px verdes", "pass": true },
+      { "id": "hitTest-index", "check": "pointerdown sobre handle TL -> quadDrag == 0", "pass": true },
+      { "id": "drag-move", "check": "drag +150/+90px -> quad[0]=(0.3960,0.3128), error nativo 0 px (<2)", "pass": true }
+    ],
+    "leak_stream": "no se pidio preview extra; los tracks del getUserMedia de refreshDevices() se detienen (inspeccion de codigo lineas 183-184)"
+  },
+  "tests": {
+    "npm test": "2 files, 20 tests PASS (vitest no toca spike.html)",
+    "npx tsc --noEmit": "sin errores"
+  }
+}

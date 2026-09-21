@@ -1,0 +1,273 @@
+﻿diff --git a/.opencode/command/spike.md b/.opencode/command/spike.md
+index b0729a7..0cf6b70 100644
+--- a/.opencode/command/spike.md
++++ b/.opencode/command/spike.md
+@@ -4,6 +4,6 @@ description: Spike F0 de dispositivos ΓÇö genera el instrumento HTML de diagn├│s
+ 
+ Spike F0 (PLAN_MAESTRO secci├│n 5 ┬╖ F0). Usa la skill `spike-dispositivos`.
+ 
+-1. Genera/actualiza el HTML del spike F0 en `spike.html` (un solo archivo autocontenido, abrible directo sin build) con: selector de c├ímara principal trasera expl├¡cita via `enumerateDevices`, `getSettings()` reales, `getCapabilities()`, test de rutas A/B/C, test `createImageBitmap` con `imageOrientation:'from-image'`, y medici├│n de DPI runtime (`anchoQuadPx / 8.27`).
++1. Genera/actualiza el HTML del spike F0 en `spike.html` (un solo archivo autocontenido, abrible directo sin build) con: selector de c├ímara principal trasera expl├¡cita via `enumerateDevices`, `getSettings()` reales, `getCapabilities()`, test de rutas A/B/C, test `createImageBitmap` con `imageOrientation:'from-image'`, y medici├│n de DPI runtime (`anchoQuadPx / 8.5` ΓÇö Carta, D1; A4 = 8.27 alternativa).
+ 2. ΓÜá∩╕Å RECORDATORIO: la ejecuci├│n en dispositivos f├¡sicos es HUMANA (getUserMedia no se valida sin hardware; BrowserStack no sirve). El agente NO ejecuta ni rellena la checklist.
+ 3. Cuando el humano reporte los logs por dispositivo, actualiza `CameraProfile` (src/camera/) y congela la tabla DPI real en el plan ma├▒ana/trabajo de F0. Nada de valores supuestos: si un dato no fue medido, queda pendiente.
+\ No newline at end of file
+diff --git a/.opencode/skills/ios-camera-quirks/SKILL.md b/.opencode/skills/ios-camera-quirks/SKILL.md
+index 62c1cf9..80244ae 100644
+--- a/.opencode/skills/ios-camera-quirks/SKILL.md
++++ b/.opencode/skills/ios-camera-quirks/SKILL.md
+@@ -1,21 +1,21 @@
+ ---
+ name: ios-camera-quirks
+-description: Use whenever implementing or reviewing anything related to camera capture on iOS/Safari: capture routes A/B/C, video element requirements, EXIF orientation, torch, storage.persist for IndexedDB, or haptic feedback. Extracted from PLAN_MAESTRO v3.0 sections 4 and 5.
++description: Use whenever implementing or reviewing anything related to camera capture on iOS/Safari: capture routes A/B/C, video element requirements, EXIF orientation, torch, storage.persist for IndexedDB, or haptic feedback. Extracted from PLAN_MAESTRO v3.1 sections 4 and 5.
+ ---
+ 
+ # iOS Camera Quirks
+ 
+-Fuente de verdad: PLAN_MAESTRO v3.0, secciones 4 y 5.
++Fuente de verdad: PLAN_MAESTRO v3.1, secciones 4 y 5.
+ 
+ ## Rutas de captura hi-res ΓÇö cu├índo aplica cada una
+ 
+-| Ruta | Implementaci├│n | Aplica en | DPI efectivo (A4 llenando encuadre) |
++| Ruta | Implementaci├│n | Aplica en | DPI efectivo (Carta llenando encuadre) |
+ |---|---|---|---|
+-| **A: `ImageCapture.takePhoto()`** | Dispara autofoco/exposici├│n del hardware | Chrome / Android | **~360 DPI** (12MP, 3000├ù4000) ΓÇö ruta de calidad |
+-| **B: `drawImage` del track** | Pausar video, `drawImage` a canvas | Safari / iOS **auto** | ~130-165 DPI (1080p) ┬╖ ~260-330 DPI si `getSettings()` confirma 4K (2160) |
+-| **C: `<input capture>` manual** | Pick nativo de c├ímara, sensor completo | Safari / iOS **manual FULL-RES** | **~300+ DPI** ΓÇö es la ruta de calidad en iOS, con UX de primera clase (no un escape) |
++| **A: `ImageCapture.takePhoto()`** | Dispara autofoco/exposici├│n del hardware | Chrome / Android | **~353ΓÇô364 DPI** (12MP, 3000├ù4000) ΓÇö ruta de calidad |
++| **B: `drawImage` del track** | Pausar video, `drawImage` a canvas | Safari / iOS **auto** | ~127ΓÇô175 DPI (1080p) ┬╖ ~254ΓÇô349 DPI si `getSettings()` confirma 4K (2160) |
++| **C: `<input capture>` manual** | Pick nativo de c├ímara, sensor completo | Safari / iOS **manual FULL-RES** | **~356+ DPI** ΓÇö es la ruta de calidad en iOS, con UX de primera clase (no un escape) |
+ 
+-Regla de dise├▒o: el `CameraProfile` calcula y loguea DPI en runtime (`anchoQuadPx / 8.27`). El copy de producto NO promete calidad uniforme entre plataformas.
++Regla de dise├▒o: el `CameraProfile` calcula y loguea DPI en runtime (`anchoQuadPx / 8.5` ΓÇö Carta, D1; A4 = 8.27 alternativa). El copy de producto NO promete calidad uniforme entre plataformas.
+ 
+ ## `enumerateDevices()` ΓÇö elegir c├ímara principal expl├¡cita
+ 
+diff --git a/.opencode/skills/spike-dispositivos/SKILL.md b/.opencode/skills/spike-dispositivos/SKILL.md
+index 7ac84e6..c539f8e 100644
+--- a/.opencode/skills/spike-dispositivos/SKILL.md
++++ b/.opencode/skills/spike-dispositivos/SKILL.md
+@@ -5,7 +5,7 @@ description: Use for the F0 device spike (dias 1-2): generating the diagnostic H
+ 
+ # Spike de Dispositivos (F0)
+ 
+-Fuente de verdad: PLAN_MAESTRO v3.0, secci├│n 5 ┬╖ F0 (Spike, d├¡as 1-2) y secci├│n 4.
++Fuente de verdad: PLAN_MAESTRO v3.1, secci├│n 5 ┬╖ F0 (Spike, d├¡as 1-2) y secci├│n 4.
+ 
+ > ≡ƒÜº **REGLA DIVISI├ôN AGENTE/HUMANO:** el agente genera instrumentos (HTML del spike, logs, plantillas). **SOLO un humano** ejecuta en dispositivos f├¡sicos reales (getUserMedia no se valida desde IDE ni BrowserStack) y reporta los resultados. Nadie "rellena" la checklist con supuestos.
+ 
+@@ -29,18 +29,18 @@ track.width x height : ej. 1280x720
+ aspect ratio         : ej. 16:9 (NUNCA asumir; es un crop del sensor)
+ capabilities.torch   : true|false
+ capabilities.focusMode : continuous|manual|...
+-dpiRuntime           : anchoQuadPx / 8.27   (DPR del papel A4 en runtime, no prometido)
++dpiRuntime           : anchoQuadPx / 8.5   (DPR del papel Carta en runtime, no prometido; A4 = 8.27 alternativa)
+ settings verificados : getSettings() real, no ideal
+ ```
+ 
+ ## Plantilla de tabla DPI por dispositivo (secci├│n 4 del maestro)
+ 
+-| Dispositivo | Ruta | Resoluci├│n | DPI efectivo (A4 llenando encuadre) | Nota |
++| Dispositivo | Ruta | Resoluci├│n | DPI efectivo (Carta llenando encuadre) | Nota |
+ |---|---|---|---|---|
+-| (d├¡a 1) | A: takePhoto (Android) | 3000├ù4000 | ~360 | Ruta de calidad Android |
+-| (d├¡a 2) | B: drawImage track (iOS auto) | 1080 ancho | ~130-165 | Lectura/OCR ok; NO impresi├│n |
+-| (d├¡a 2, si getSettings 4K) | B: drawImage track | 2160 ancho | ~260-330 | El spike lo determina por modelo |
+-| (d├¡a 2) | C: input capture (iOS manual) | Full sensor | ~300+ | Ruta de calidad iOS, UX primera clase |
++| (d├¡a 1) | A: takePhoto (Android) | 3000├ù4000 | ~353ΓÇô364 | Ruta de calidad Android |
++| (d├¡a 2) | B: drawImage track (iOS auto) | 1080 ancho | ~127ΓÇô175 | Lectura/OCR ok; NO impresi├│n |
++| (d├¡a 2, si getSettings 4K) | B: drawImage track | 2160 ancho | ~254ΓÇô349 | El spike lo determina por modelo |
++| (d├¡a 2) | C: input capture (iOS manual) | Full sensor | ~356+ | Ruta de calidad iOS, UX primera clase |
+ 
+ ## Flujo tras ejecuci├│n humana
+ 
+diff --git a/PLAN_MAESTRO.md b/PLAN_MAESTRO.md
+index 7b8ec55..a2c0fb2 100644
+--- a/PLAN_MAESTRO.md
++++ b/PLAN_MAESTRO.md
+@@ -1,8 +1,11 @@
+-# ≡ƒôï PLAN MAESTRO v3.0 (Consolidado)
++# ≡ƒôï PLAN MAESTRO v3.1 (Consolidado)
+ ## Digitalizador de Documentos en Navegador ΓÇö Cliente-Side
+ 
+ > Documento ├║nico de referencia. Incorpora las 5 rondas de revisi├│n: documento te├│rico ΓåÆ plan v1 ΓåÆ triaje de 3 an├ílisis ΓåÆ v2 ΓåÆ an├ílisis final. **Congelado para ejecuci├│n.**
+ 
++## Changelog
++- **v3.1 ΓÇö D1:** formato carta como referencia (spike, diana F4, export F5). Tabla ┬º4 recalculada.
++
+ ---
+ 
+ ## 1. Objetivo y Alcance
+@@ -80,14 +83,16 @@ flowchart TB
+ 
+ > ΓÜá∩╕Å **Verificado en revisi├│n final:** la cifra "~220 DPI iOS" era incorrecta. La tabla correcta ΓÇö el spike de F0 confirma cu├íl aplica a tu base de usuarios:
+ 
+-| Ruta | Resoluci├│n | DPI efectivo (A4 llenando encuadre) | Nota |
++| Ruta | Resoluci├│n | DPI efectivo (Carta llenando encuadre) | Nota |
+ |---|---|---|---|
+-| Android `takePhoto()` 12MP | 3000├ù4000 | **~360 DPI** | Ruta de calidad en Android |
+-| iOS track 1080p | 1080 ancho | **~130-165 DPI** | Lectura/OCR ok; NO impresi├│n |
+-| iOS track 4K (si `getSettings()` lo confirma) | 2160 ancho | ~260-330 DPI | El spike lo determina por modelo |
+-| iOS manual (`input capture`) | Full sensor | **~300+ DPI** | **Es la ruta de calidad en iOS** ΓÇö UX de primera clase, no escape |
++| Android `takePhoto()` 12MP | 3000├ù4000 | **~353ΓÇô364 DPI** | Ruta de calidad en Android |
++| iOS track 1080p | 1080 ancho | **~127ΓÇô175 DPI** | Lectura/OCR ok; NO impresi├│n |
++| iOS track 4K (si `getSettings()` lo confirma) | 2160 ancho | ~254ΓÇô349 DPI | El spike lo determina por modelo |
++| iOS manual (`input capture`) | Full sensor | **~356+ DPI** | **Es la ruta de calidad en iOS** ΓÇö UX de primera clase, no escape |
++
++*Nota: las cifras exactas las fija el spike real por dispositivo; la tabla es referencia.*
+ 
+-**Consecuencia de dise├▒o:** el `CameraProfile` calcula y loguea DPI en runtime (`anchoQuadPx / 8.27`). El copy de producto no promete calidad uniforme entre plataformas.
++**Consecuencia de dise├▒o:** el `CameraProfile` calcula y loguea DPI en runtime (`anchoQuadPx / 8.5`; A4 = 8.27 disponible como alternativa). El copy de producto no promete calidad uniforme entre plataformas.
+ 
+ ---
+ 
+@@ -188,7 +193,7 @@ flowchart TB
+ 3. **Validaci├│n post-refine:** convexidad + no-auto-intersecci├│n + ├írea ΓåÆ si un lado falla, **fallback a la esquina de 480p solo para ese lado** + marcar para el editor
+ 
+ **Presupuesto de memoria (cr├¡tico en m├│viles de 3GB):**
+-- **Cap del lado largo de salida: ~3500px** (A4 a 300 DPI reales; m├ís es desperdicio)
++- **Cap del lado largo de salida: ~3500px** (3500/11 = ~318 DPI en carta ΓåÆ cap VALIDADO, sin cambio num├⌐rico; m├ís es desperdicio)
+ - Estimaci├│n del fondo de sombras (dilataci├│n+mediana) sobre versi├│n **reducida**, nunca sobre 12MP
+ - Picos objetivo: <150MB
+ 
+@@ -204,7 +209,7 @@ flowchart TB
+ | Revertir a auto / confirmar | Re-warp al confirmar |
+ | **Modo etiquetado (opt-in)** | Loguea el quad autom├ítico de **TODAS** las capturas (+ el ajustado si existe). ΓÜá∩╕Å Etiquetar solo correcciones = dataset de solo fallos (**sesgo de selecci├│n**); revisi├│n humana peri├│dica de una muestra de las correctas |
+ | **Set de test congelado** | 50-100 im├ígenes estratificadas por condici├│n que **jam├ís** tocan entrenamiento (evita fuga de evaluaci├│n) |
+-| **Diana de calibraci├│n** | A4 impreso con esquinas a distancias conocidas (mm) ΓåÆ script en `tests/bench/` ΓåÆ reportar "error ┬▒X mm al 95%" |
++| **Diana de calibraci├│n** | Carta impresa (8.5├ù11 in) con esquinas a distancias conocidas (mm) ΓåÆ script en `tests/bench/` ΓåÆ reportar "error ┬▒X mm al 95%" |
+ 
+ **Γ£à DoD:** Corregir una esquina en <2s; colector de dataset corriendo con datos balanceados.
+ 
+@@ -223,7 +228,7 @@ flowchart TB
+ 
+ **Resto:**
+ - Cola multip├ígina (miniaturas, reorder, delete) ΓåÆ IndexedDB con **`storage.persist()` + `estimate()`** (iOS purga IndexedDB de PWAs poco usadas ΓåÆ aviso si cuota apretada o p├íginas sin exportar)
+-- PDF multip├ígina (pdf-lib), fit A4/Letter
++- PDF multip├ígina (pdf-lib), fit Letter (default, D1) / A4 opcional
+ - **Harness de calidad CER** (la mejor relaci├│n costo/beneficio restante, 1-2 d├¡as): Tesseract.js/PaddleOCR sobre ~30 documentos fijos propios, antes/despu├⌐s del enhance, por modo y categor├¡a ΓåÆ si CLAHE agresivo sube el CER en papel satinado, lo sabes con n├║mero
+ - `navigator.share()` para exportar
+ 
+@@ -251,7 +256,7 @@ flowchart TB
+ | Tarea | Detalle |
+ |---|---|
+ | **Datos (el critical path son los datos, no el modelo)** | Fine-tune YOLOv8n-pose (4 kp) sobre dataset PROPIO: 300-500 im├ígenes + augmentations (100-200 es marginal). Hard-example mining de los logs de timeout de 8s |
+-| ΓÜá∩╕Å Licencia | **MIDV-500 = CC BY-NC-SA (NO comercial).** Solo sanity-check en investigaci├│n; NUNCA entrenamiento para producto comercial. El mismatch de dominio (IDs vs A4/recibos) ya lo hac├¡a poco ├║til |
++| ΓÜá∩╕Å Licencia | **MIDV-500 = CC BY-NC-SA (NO comercial).** Solo sanity-check en investigaci├│n; NUNCA entrenamiento para producto comercial. El mismatch de dominio (IDs vs carta/A4/recibos) ya lo hac├¡a poco ├║til |
+ | Export | ONNX ΓåÆ cuantizaci├│n INT8 (~4-6MB) |
+ | Runtime | `onnxruntime-web`, `executionProviders:['webgpu','wasm']` (fallback autom├ítico) |
+ | Integraci├│n | Mismo contrato "4 esquinas"; h├¡brido: cl├ísico primero, DL si score bajo |
+@@ -318,7 +323,7 @@ mobile-scanner/
+ 
+ | Riesgo | Prob | Mitigaci├│n |
+ |---|---|---|
+-| iOS auto = 1080p (~130-165 DPI) | Alta | Ruta manual es la de calidad, UX primera clase; spike verifica 4K por modelo |
++| iOS auto = 1080p (~127-175 DPI) | Alta | Ruta manual es la de calidad, UX primera clase; spike verifica 4K por modelo |
+ | Techo distorsi├│n de lente | Media | Documentado; tele + excentricidad; 1-2px aceptado |
+ | Leaks WASM | Media | `withMats()` + estr├⌐s 10min |
+ | opencv.js 8MB | Alta | Lazy + SW + build custom 2-3MB |
+diff --git a/WORKFLOW_STATE.md b/WORKFLOW_STATE.md
+index 2858ae7..d17d974 100644
+--- a/WORKFLOW_STATE.md
++++ b/WORKFLOW_STATE.md
+@@ -1,11 +1,15 @@
+ # WORKFLOW_STATE ΓÇö mobile-scanner
+ 
+-├Ültima actualizaci├│n: 2026-09-19
++├Ültima actualizaci├│n: 2026-09-21
+ 
+ ## Tareas Completadas
+ - **Adaptaci├│n del entorno** (PLAN_ADAPTACION Fases 0-5): 8 agentes globales, AGENTS.md,
+   WORKFLOW_STATE.md, 3 skills de dominio, comando `/spike` + `/ship`, HTML del spike F0.
+   Evidencias en `PLAN_EVIDENCE/adaptacion/`.
++- **T1-carta cerrada (2026-09-21 ┬╖ /ship doble APROBADO):** spike.html (constante
++  PAPER_DEFAULT_IN + 6 ediciones) + PLAN_MAESTRO ┬º4/F3/F4/F5 en carta + coherencia
++  skills/comando `/spike` a v3.1. Evidencia en `PLAN_EVIDENCE/2026-09-21-T1-carta/`
++  (screenshot Playwright panel DPI 8.5 + diff + sanity 844.8px/99.4 DPI).
+ 
+ ## Tareas en Progreso
+ - _F0 spike: instrumento HTML generado, pendiente ejecuci├│n HUMANA en 2-3 dispositivos reales (incl. iPhone f├¡sico)._
+@@ -18,9 +22,12 @@
+ - T4.1 `opencode mcp list` ΓåÆ 4/4 desde mobile-scanner ΓÇö ΓÅ│ **├║ltima pendiente** (CLI cuelga; visual TUI)
+ 
+ ## Decisiones de Arquitectura
+-- **Fuente:** PLAN_MAESTRO v3.0 congelado ┬╖ Fase actual: F0 spike pendiente
++- **Fuente:** PLAN_MAESTRO v3.1 congelado ┬╖ Fase actual: T2 n├║cleo matem├ítico (F0 spike pendiente de ejecuci├│n humana)
+ - **Entorno adaptado y verificado** (automatizable + TUI de cierre). ├Ünico pendiente del plan de
+   adaptaci├│n: T4.1 `opencode mcp list` en TUI.
+ - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de p├¡xeles sin ratio;
+   aviso de cap >3500px a├▒adido al log. Re-validado sin errores.
+-- Los agentes NO re-discuten decisiones del maestro; proponen por escrito, nunca inline (ver AGENTS.md).
+\ No newline at end of file
++- Los agentes NO re-discuten decisiones del maestro; proponen por escrito, nunca inline (ver AGENTS.md).
++
++## Desviaciones Documentadas
++- **D1 (aceptada por humano ┬╖ 2026-09-21 ┬╖ tarea T1):** formato de referencia A4 ΓåÆ CARTA (8.5 ├ù 11 in). Motivo: est├índar regional + disponibilidad real de papel carta en el entorno de medici├│n. A4 queda como alternativa documentada.
+\ No newline at end of file
+diff --git a/spike.html b/spike.html
+index a54f966..a5e0a22 100644
+--- a/spike.html
++++ b/spike.html
+@@ -46,7 +46,7 @@
+ <p class="small">Instrumento generado por el pipeline (AGENTS.md ┬╖ skill <code>spike-dispositivos</code>).
+ La ejecuci├│n es <b>humana</b> en 2-3 dispositivos reales, incluyendo iPhone f├¡sico
+ (getUserMedia no se valida sin hardware). Nada se hardcodea: toda resoluci├│n, capability o DPI
+-se mide aqu├¡. Fuente de verdad: PLAN_MAESTRO v3.0 ┬º4 y ┬º5-F0.</p>
++se mide aqu├¡. Fuente de verdad: PLAN_MAESTRO v3.1 ┬º4 y ┬º5-F0.</p>
+ 
+ <div class="card">
+   <h2>C├ímara</h2>
+@@ -118,12 +118,12 @@ se mide aqu├¡. Fuente de verdad: PLAN_MAESTRO v3.0 ┬º4 y ┬º5-F0.</p>
+ </div>
+ 
+ <div class="card">
+-  <h2>Medici├│n de DPI runtime (cuadril├ítero manual sobre A4)</h2>
+-  <p class="small">Coloque una hoja <b>A4 llenando el encuadre</b>. Arrastre las 4 esquinas del
++  <h2>Medici├│n de DPI runtime (cuadril├ítero manual sobre carta)</h2>
++  <p class="small">Coloque una hoja <b>tama├▒o carta, VERTICAL</b> llenando el encuadre (ancho visible = 8.5 in). Arrastre las 4 esquinas del
+   pol├¡gono sobre la hoja; al confirmar se calcula <code>anchoQuadPx / anchoPapel(in)</code> en la
+   resoluci├│n nativa del track. Esto mide DPI real de la ruta B/video.</p>
+   <div class="kv"><span>Anchura de papel de referencia (in)</span>
+-    <span><input id="paperWidthIn" type="number" step="0.01" value="8.27" style="width:90px"> in <span class="muted">(A4 = 8.27)</span></span></div>
++    <span><input id="paperWidthIn" type="number" step="0.01" value="8.5" style="width:90px"> in <span class="muted">(Carta = 8.5 ┬╖ A4 = 8.27)</span></span></div>
+   <div>
+     <button id="dpiReset" class="danger">Reiniciar esquinas</button>
+     <button id="dpiCompute" class="primary">Calcular DPI</button>
+@@ -138,8 +138,8 @@ se mide aqu├¡. Fuente de verdad: PLAN_MAESTRO v3.0 ┬º4 y ┬º5-F0.</p>
+     </tbody>
+   </table>
+   <p class="small warn">Referencia del PLAN_MAESTRO ┬º4 (NO es un valor supuesto: se mide): se
+-  espera ~360 DPI en Android takePhoto; ~130-165 DPI en iOS track 1080p; ~260-330 si getSettings()
+-  confirma 4K; &gt;300 DPI en input capture manual. Este instrumento solo reporta lo medido.</p>
++  espera ~353ΓÇô364 DPI en Android takePhoto; ~127ΓÇô175 DPI en iOS track 1080p; ~254ΓÇô349 si getSettings()
++  confirma 4K; ~356+ DPI en input capture manual. Este instrumento solo reporta lo medido.</p>
+ </div>
+ 
+ <div class="card">
+@@ -154,6 +154,7 @@ se mide aqu├¡. Fuente de verdad: PLAN_MAESTRO v3.0 ┬º4 y ┬º5-F0.</p>
+ 
+ <script>
+ "use strict";
++const PAPER_DEFAULT_IN = 8.5; // Carta. A4 = 8.27 (ver PLAN_MAESTRO ┬º4)
+ const $ = (id) => document.getElementById(id);
+ 
+ const els = {
+@@ -449,7 +450,7 @@ $("dpiCompute").addEventListener("click", () => {
+   const dx = Math.hypot(quad[1].x - quad[0].x, quad[1].y - quad[0].y) * nw;
+   const bx = Math.hypot(quad[2].x - quad[3].x, quad[2].y - quad[3].y) * nw;
+   const anchoQuadPx = (dx + bx) / 2;
+-  const paperIn = Number($("paperWidthIn").value) || 8.27;
++  const paperIn = Number($("paperWidthIn").value) || PAPER_DEFAULT_IN;
+   els.vdpiTop.textContent = dx.toFixed(1) + " px";
+   els.vdpiBottom.textContent = bx.toFixed(1) + " px";
+   els.vdpiWidth.textContent = anchoQuadPx.toFixed(1) + " px";
+@@ -468,7 +469,7 @@ function collectReport(ml) {
+     "- drawImage: " + els.drawImageResult.textContent,
+     "- input capture: " + els.inputCaptureResult.textContent,
+     "- EXIF createImageBitmap: " + els.exifResult.textContent,
+-    "- DPI runtime medido: " + els.vdpiDpi.textContent + " (anchoQuadPx=" + els.vdpiWidth.textContent + ", papel=" + ($("paperWidthIn").value || 8.27) + " in)",
++    "- DPI runtime medido: " + els.vdpiDpi.textContent + " (anchoQuadPx=" + els.vdpiWidth.textContent + ", papel=" + ($("paperWidthIn").value || PAPER_DEFAULT_IN) + " in)",
+     "",
+     "- CameraProfile log:",
+     ...els.cameraProfileLog.textContent.split("\n").map(l => "  " + l),
