@@ -7,7 +7,7 @@ export default defineConfig({
     environment: 'node',
     coverage: {
       provider: 'v8',
-      include: ['src/core/geometry.ts'],
+      include: ['src/core/geometry.ts', 'src/core/quality.ts'],
       thresholds: { lines: 90 },
     },
   },

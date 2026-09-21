@@ -24,6 +24,19 @@
   URL: https://jg-stevan.github.io/mobile-scanner/spike.html
   - Spike funcional: cámara fake activa (640×480), panel DPI carta 8.5, quad 6122 px verdes (no colapsado).
   - Commit cfa60e1 + push + Pages activo (main/root). Evidencia en `PLAN_EVIDENCE/T1-R3/`.
+- **T1-R4 cerrada (2026-09-21 · /ship doble APROBADO):** hallazgos del spike
+  Android registrados (D2 orientación/DPI, D3 focusMode, D4 ruta C ignora
+  deviceId, corrección takePhoto natural ≈220-240 DPI) en WORKFLOW_STATE +
+  PLAN_MAESTRO §4 (nota bajo tabla intacta) y §8 (focusMode D3) + fix spike.html
+  (fromEntries con pares [k,v], texto ℹ cap 3500px de salida). Verificado en
+  cámara fake 640×480: capabilities raw poblado (pre-fix `{}`). Evidencia en
+  `PLAN_EVIDENCE/T1-R4/` (screenshot + cameraProfileLog + diff).
+- **T3-quality cerrado (2026-09-21 · /ship doble APROBADO):** src/core/quality.ts
+  puro (11 constantes con origen, 7 funciones §5-F2, excentricidad CANDIDATE
+  bloqueada con throw — ECCENTRICITY_MARGIN=0.05 pendiente de aprobación
+  humana) + 21 tests nuevos (backpressure por timestamps, racha de shutter,
+  renormalización exacta). 40/40 tests, quality.ts 100% líneas, tsc limpio.
+  Evidencia en `PLAN_EVIDENCE/T3-quality/`.
 
 ## Tareas en Progreso
 - _F0 spike: instrumento HTML generado, pendiente ejecución HUMANA en 2-3 dispositivos reales (incl. iPhone físico)._
