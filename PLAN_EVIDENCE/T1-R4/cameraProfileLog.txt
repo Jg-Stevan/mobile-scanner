@@ -1,0 +1,9 @@
+deviceLabel        : VGA WebCam (0408:a031)
+track.width x height : 640 x 480
+aspect ratio       : 1.3333
+capabilities.torch : false
+capabilities.focusMode : —
+focus tele/main list ?: (manual) ver enumerateDevices
+dpiRuntime         : (medir abajo con el quad)
+settings verificados : {"width":640,"height":480,"frameRate":30,"facingMode":"user","deviceId":"5be6ff2783b7…"}
+capabilities raw   : {"brightness":"{\"max\":64,\"min\":-64,\"step\":1}","contrast":"{\"max\":100,\"min\":0,\"step\":1}","saturation":"{\"max\":100,\"min\":0,\"step\":1}","sharpness":"{\"max\":100,\"min\":0,\"step\":1}","exposureMode":"[\"continuous\",\"manual\"]","whiteBalanceMode":"[\"continuous\",\"manual\"]","frameRate":"{\"max\":30,\"min\":0}","width":"{\"max\":640,\"min\":1}"}

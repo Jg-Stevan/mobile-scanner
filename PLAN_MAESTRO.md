@@ -92,6 +92,8 @@ flowchart TB
 
 *Nota: las cifras exactas las fija el spike real por dispositivo; la tabla es referencia.*
 
+> 📌 **Medición real SM-A566E (T1-R4, spike Android):** `takePhoto` ≈ 240 DPI con encuadre natural (ratio video 9:16 vs foto 3:4 → el papel llena ~66% del ancho de la foto). La re-detección F3 está CONFIRMADA por hardware (aspect ratios distintos en el mismo dispositivo).
+
 **Consecuencia de diseño:** el `CameraProfile` calcula y loguea DPI en runtime (`anchoQuadPx / 8.5`; A4 = 8.27 disponible como alternativa). El copy de producto no promete calidad uniforme entre plataformas.
 
 ---
@@ -300,7 +302,7 @@ mobile-scanner/
 │   │   └── quality.ts           # Score compuesto (compartido worker/benchmark)
 │   ├── workers/detection.worker.ts
 │   ├── camera/
-│   │   ├── CameraController.ts  # enumerateDevices, constraints, torch
+│   │   ├── CameraController.ts  # enumerateDevices, constraints, torch (selección de cámara por focusMode — D3)
 │   │   ├── frameLoop.ts         # rVFC + backpressure
 │   │   └── hiResCapture.ts      # Rutas A/B/C + EXIF + re-validación
 │   ├── scan/

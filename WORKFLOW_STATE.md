@@ -45,3 +45,7 @@
 
 ## Desviaciones Documentadas
 - **D1 (aceptada por humano · 2026-09-21 · tarea T1):** formato de referencia A4 → CARTA (8.5 × 11 in). Motivo: estándar regional + disponibilidad real de papel carta en el entorno de medición. A4 queda como alternativa documentada.
+- **D2 (registrada · T1-R4 · spike Android SM-A566E):** la orientación del teléfono afecta el DPI en documentos portrait: vertical ≈ 254 DPI teórico vs horizontal ≈ 196 (el lado corto del sensor alinea con el lado largo del papel). Acción futura: guía de orientación en UI (F1/F2).
+- **D3 (registrada · T1-R4 · spike Android):** criterio de selección de cámara = `focusMode` con "continuous"/"single-shot" (autofocus real). Cámaras solo-[manual] = fixed-focus → descartadas. Validado: cámara 2 (ultra-wide) sin AF y sin torch → descartada.
+- **D4 (registrada · T1-R4 · spike Android):** la ruta C (`input capture`) ignora el `deviceId` seleccionado; siempre usa la principal de la app nativa (validado: 6120×8160 con ambas cámaras).
+- **Corrección de expectativa §4 (registrada · T1-R4 · spike Android SM-A566E):** `takePhoto` Android con encuadre natural (preview 9:16, el papel no llena la foto 3:4) ≈ **220-240 DPI**, no ~353. El teórico 353 asumía el papel llenando la foto — condición no alcanzable desde el preview. Validado: video 225 DPI (88.6% encuadre).
