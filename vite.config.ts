@@ -13,6 +13,8 @@ export default defineConfig({
         'src/workers/withMats.ts',
         'src/workers/pipeline.ts',
         'src/camera/frameLoop.ts',
+        'src/camera/CameraController.ts',
+        'src/camera/hiResCapture.ts',
       ],
       thresholds: { lines: 90 },
     },

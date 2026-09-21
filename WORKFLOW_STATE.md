@@ -49,10 +49,32 @@
   revisor-b con 2 findings desestimados por orquestador (640×480 es mandato del
   spec, no hardcode; e2e-60s.json sí existe). Evidencia en
   `PLAN_EVIDENCE/T4-worker/`.
+- **T5-camera cerrado (código · 2026-09-21 · /ship APROBADO con adjudicación):**
+  CameraController (D3, gUM en cascada 3840 ideal sin ratio, profile, torch,
+  orientación) + hiResCapture (rutas A/B/C primitivas + EXIF). 89/89 tests,
+  Controller 98.9%/hiRes 95.2% líneas, tsc limpio. E2E fake cam: profile,
+  ruta B == settings, EXIF-6 → 50×100, torch unsupported. Revisor APROBADO;
+  revisor-b 1 finding desestimado (cap 3500px rige salida warp/F3, no el hint
+  `ideal` de entrada — el spec T5 exige 3840). ⏳ Falta validación humana en
+  SM-A566E (ver arriba). Evidencia en `PLAN_EVIDENCE/T5-camera/`.
 ## Tareas en Progreso
 - _F0 spike: instrumento HTML generado, pendiente ejecución HUMANA en 2-3 dispositivos reales (incl. iPhone físico)._
 
+## Backlog F1 (notas registradas 2026-09-21, revisión externa T4 — no bloquean T4)
+- Benchmark de detección real en 2 condiciones (matiz del finding 1 de revisor-b,
+  ratificado como tema real por el humano): resize 640×480 con distorsión
+  anisotrópica vs resize preservando aspecto (~270×480 para 9:16). Las fracciones
+  se preservan en ambos (mapeo F1→foto correcto); decidir con datos por robustez
+  de Canny/approxPolyDP sobre geometría deformada.
+- Estrés de 10 min (heap <20% crecimiento) como DoD OBLIGATORIO de F1 (skill
+  opencv-wasm-memoria) — el de 62s de T4 no lo sustituye.
+- Evaluar temprano el build custom de OpenCV (~2-3MB solo imgproc): 4.5.5 es de
+  2021 y el boot medido es 4.4s con el build completo de 8MB.
+
 ## Verificaciones pendientes (TUI/humanas)
+- T5-humano (SM-A566E, pendiente): app de prueba → DEBE elegir camera 0 por D3;
+  profile ≈ (2160×3840, torch true, 3 focusModes); ruta A takePhoto OK.
+  Screenshot del log → completar PLAN_EVIDENCE/T5-camera/.
 - T0.5 `opencode agent list` → 8 agentes desde mobile-scanner — **HECHO** (verificado 2026-09-20; evidencia 00 actualizada)
 - T1.4 `@explorador` cap ~3500px AGENTS.md:21 — **HECHO** (2026-09-20)
 - T2.4 skill `opencv-wasm-memoria` (withMats) con `@implementador-backend` — **HECHO** (2026-09-20)
