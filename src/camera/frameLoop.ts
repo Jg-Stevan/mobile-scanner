@@ -1,7 +1,124 @@
-// src/camera/frameLoop.ts — bucle de captura de frames (PLAN_MAESTRO §5-F0).
-//
-// TODO (F0/F1): requestVideoFrameCallback con fallback rAF + backpressure
-// (no enviar al worker si está ocupado) + transferencia ImageBitmap.
-// Sin implementación en T2.
-export const FRAME_LOOP_TODO =
-  'rVFC + fallback rAF + backpressure — F0/F1, PLAN_MAESTRO §5-F0' as const;
+// src/camera/frameLoop.ts — bucle de envío de frames al DetectionWorker (T4).
+// requestVideoFrameCallback con fallback rAF (como el spike); envía cada frame
+// como ImageBitmap transferable a 480p (downscale en createImageBitmap) SOLO
+// si el worker está libre — flag local por mensajes result/busy, SIN cola.
+// El descarte por flag + el 'busy' del worker son las dos capas de backpressure.
+
+import type { RawQualityInput, WorkerOut } from '../workers/protocol';
+import { PROCESS_HEIGHT, PROCESS_WIDTH } from '../workers/protocol';
+
+export interface FrameLoopDeps {
+  /** Agenda el próximo frame; devuelve handle cancelable. Default: rVFC o rAF. */
+  requestFrame(cb: () => void): number;
+  cancelFrame(handle: number): void;
+  /** Captura y reduce el frame actual a (w,h). Default: createImageBitmap. */
+  capture(video: HTMLVideoElement, w: number, h: number): Promise<ImageBitmap>;
+  now(): number;
+}
+
+export interface FrameLoopOptions {
+  video: HTMLVideoElement;
+  worker: Worker;
+  width?: number;
+  height?: number;
+  onResult?: (q: RawQualityInput, ts: number) => void;
+  onStatus?: (msg: WorkerOut) => void;
+  /** Inyección para tests (por defecto usa rVFC/rAF + createImageBitmap). */
+  deps?: Partial<FrameLoopDeps>;
+}
+
+export interface FrameLoopStats {
+  sent: number;
+  dropped: number;
+}
+
+export interface FrameLoopHandle {
+  stop(): void;
+  stats(): FrameLoopStats;
+}
+
+export function startFrameLoop(opts: FrameLoopOptions): FrameLoopHandle {
+  const width = opts.width ?? PROCESS_WIDTH;
+  const height = opts.height ?? PROCESS_HEIGHT;
+  const deps: FrameLoopDeps = {
+    requestFrame: (cb) => {
+      if (typeof opts.video.requestVideoFrameCallback === 'function') {
+        return opts.video.requestVideoFrameCallback(cb);
+      }
+      return requestAnimationFrame(cb);
+    },
+    cancelFrame: (h) => {
+      if (typeof opts.video.cancelVideoFrameCallback === 'function') {
+        opts.video.cancelVideoFrameCallback(h);
+      } else {
+        cancelAnimationFrame(h);
+      }
+    },
+    capture: (video, w, h) =>
+      createImageBitmap(video, {
+        resizeWidth: w,
+        resizeHeight: h,
+        resizeQuality: 'low',
+      }),
+    now: () => performance.now(),
+    ...opts.deps,
+  };
+
+  let stopped = false;
+  let handle = 0;
+  let workerBusy = false;
+  let sent = 0;
+  let dropped = 0;
+
+  const schedule = (): void => {
+    if (stopped) return;
+    handle = deps.requestFrame(tick);
+  };
+
+  const tick = (): void => {
+    if (stopped) return;
+    schedule(); // la cadencia no espera a la captura (rVFC manda)
+    if (workerBusy) {
+      dropped++;
+      return;
+    }
+    workerBusy = true;
+    deps
+      .capture(opts.video, width, height)
+      .then((bitmap) => {
+        if (stopped) {
+          bitmap.close();
+          return;
+        }
+        sent++;
+        opts.worker.postMessage({ type: 'detect', bitmap, ts: deps.now() }, [bitmap]);
+      })
+      .catch(() => {
+        // Captura fallida (video detenido a mitad): liberar el flag.
+        workerBusy = false;
+      });
+  };
+
+  opts.worker.onmessage = (ev: MessageEvent<WorkerOut>) => {
+    const msg = ev.data;
+    if (msg.type === 'result') {
+      workerBusy = false;
+      opts.onResult?.(msg.qualityInput, msg.ts);
+    } else if (msg.type === 'busy') {
+      // El worker sigue con el frame en vuelo: se espera su 'result'.
+    } else {
+      opts.onStatus?.(msg);
+    }
+  };
+
+  schedule();
+
+  return {
+    stop: () => {
+      stopped = true;
+      deps.cancelFrame(handle);
+      opts.worker.terminate();
+    },
+    stats: () => ({ sent, dropped }),
+  };
+}

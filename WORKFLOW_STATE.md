@@ -41,6 +41,14 @@
   implementada (computeEccentricityScore: margin 5% lado corto, peor domina;
   total = base × ecc, shutter la hereda). 48/48 tests, quality.ts 100% líneas,
   tsc limpio. Evidencia en `PLAN_EVIDENCE/T3-b-eccentricity/`.
+- **T4-worker cerrado (2026-09-21 · /ship APROBADO con adjudicación):**
+  esqueleto funcional (withMats LIFO, protocolo detect/result/busy/boot/ready,
+  pipeline stub 480p real con corners=null, frameLoop rVFC/rAF + transferables,
+  OpenCV 4.5.5 pineado). 65/65 tests, módulos nuevos 100% líneas, tsc limpio.
+  E2E 62s: worker 11.5 FPS (base F1), rAF 58.4, heap −17%. Revisor APROBADO;
+  revisor-b con 2 findings desestimados por orquestador (640×480 es mandato del
+  spec, no hardcode; e2e-60s.json sí existe). Evidencia en
+  `PLAN_EVIDENCE/T4-worker/`.
 ## Tareas en Progreso
 - _F0 spike: instrumento HTML generado, pendiente ejecución HUMANA en 2-3 dispositivos reales (incl. iPhone físico)._
 
