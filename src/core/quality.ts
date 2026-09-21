@@ -54,9 +54,10 @@ export const SHUTTER_HOLD_MS = 300;
 /** Sin detección >8s → escape a captura manual (v3 §5-F2). */
 export const NO_DETECT_TIMEOUT_MS = 8000;
 
-/** Margen de excentricidad: fracción del lado corto del frame (CANDIDATA de
- *  revisor externo — PENDIENTE DE APROBACIÓN HUMANA, NO USAR). La función
- *  computeEccentricityScore está bloqueada (throw) hasta entonces. */
+/** Margen de excentricidad: fracción del lado corto del frame.
+ *  APROBADA por humano 2026-09-21 (T3-b): score por esquina =
+ *  clamp(dMin/margin, 0, 1) con margin = 0.05·min(frameW, frameH);
+ *  score final = mín de las 4 (la peor domina). */
 export const ECCENTRICITY_MARGIN = 0.05;
 
 /** Entrada del historial de estabilidad: timestamp + quad medido. */
@@ -78,8 +79,8 @@ export interface ExposureResult {
   specularWarn: boolean;
 }
 
-/** Componentes del score total. `eccentricity` es opcional (null/undefined)
- *  hasta la aprobación humana de la fórmula candidata. */
+/** Componentes del score total. `eccentricity` null/undefined = sin
+ *  penalización (×1); numérica = penalización multiplicativa (T3-b aprobada). */
 export interface ScoreParts {
   sharpness: number;
   exposure: number;
@@ -146,33 +147,46 @@ export function computeStabilityScore(history: QuadSample[], nowMs: number): num
   return Math.min(1, Math.max(0, 1 - meanVar / STABILITY_VAR_NORM));
 }
 
-/** Excentricidad 0–1 — ⚠️ CANDIDATE BLOQUEADA: lanza siempre hasta la
- *  aprobación humana de ECCENTRICITY_MARGIN (fórmula propuesta: distancia de
- *  cada esquina al borde más cercano; 1 si todas ≥ 5% del lado corto). */
+/** Excentricidad 0–1 (APROBADA por humano 2026-09-21, T3-b).
+ *  margin = ECCENTRICITY_MARGIN · min(frameW, frameH); por esquina
+ *  dMin = min(x, frameW−x, y, frameH−y); score = clamp(dMin/margin, 0, 1).
+ *  Retorno = MÍN de las 4 (la peor esquina domina). Coordenadas fuera del
+ *  frame → dMin negativa → 0. Frame inválido (lado ≤ 0) → 0. */
 export function computeEccentricityScore(
-  _quad: Quadrilateral,
-  _frameW: number,
-  _frameH: number,
+  quad: Quadrilateral,
+  frameW: number,
+  frameH: number,
 ): number {
-  throw new Error(
-    'computeEccentricityScore: CANDIDATE bloqueada — pendiente aprobación humana de ECCENTRICITY_MARGIN (T3)',
-  );
+  const shortSide = Math.min(frameW, frameH);
+  if (!Number.isFinite(shortSide) || shortSide <= 0) return 0;
+  const margin = ECCENTRICITY_MARGIN * shortSide;
+  let worst = 1;
+  for (let i = 0; i < 4; i++) {
+    const c = quad[i]!;
+    const dMin = Math.min(c.x, frameW - c.x, c.y, frameH - c.y);
+    const s = Math.min(1, Math.max(0, dMin / margin));
+    if (s < worst) worst = s;
+  }
+  return worst;
 }
 
 /** Score compuesto (QualityScore de types.ts).
- *  @param parts componentes 0–1; `eccentricity` null/undefined hasta aprobación.
+ *  @param parts componentes 0–1; `eccentricity` null/undefined = neutro (×1).
  *  @param sharpnessVar VARIANZA cruda del Laplaciano (isBlur compara contra
  *    BLUR_THRESHOLD con la varianza, NO con el score — pasarla aparte).
  *  @param specularRatio fracción especular de computeExposureScore (viaja por
  *    separado hasta la integración F2; por defecto 0).
  *
- *  Renormalización: total = Σ(wᵢ·vᵢ) / Σ(w presentes). Hoy solo existen 3
- *  pesos (Σ = 1.0) así que equivale a 0.4·s + 0.3·e + 0.3·st exactos. Cuando la
- *  excentricidad se apruebe con su propio peso, la misma fórmula la absorbe sin
- *  romper el contrato 0–1. NOTA: el paréntesis "(0.4/0.7…)" del brief de T3 se
- *  documenta como inconsistente (Σ > 1 rompería el rango); rige esta fórmula.
+ *  Renormalización: base = Σ(wᵢ·vᵢ) / Σ(w presentes). Hoy solo existen 3
+ *  pesos (Σ = 1.0) así que la base equivale a 0.4·s + 0.3·e + 0.3·st exactos
+ *  (adjudicación humana 2026-09-21: la fórmula genérica rige sobre el
+ *  "(0.4/0.7…)" ambiguo del brief T3, que sumaría >1).
+ *  Integración de excentricidad (APROBADA humano 2026-09-21, T3-b):
+ *  PENALIZACIÓN MULTIPLICATIVA total = base × (eccentricity ?? 1) — el plan
+ *  la llama "penalización", no dimensión ponderada, así la fórmula §5-F2
+ *  congelada queda intacta y el auto-shutter la hereda vía total.
  *  `eccentricity`/`specular` del QualityScore se rellenan con el valor medido
- *  (excentricidad: 1 neutro mientras esté bloqueada). */
+ *  (excentricidad: 1 neutro si null/undefined). */
 export function computeTotalScore(
   parts: ScoreParts,
   sharpnessVar: number,
@@ -183,18 +197,18 @@ export function computeTotalScore(
     [parts.exposure, WEIGHTS.exposure],
     [parts.stability, WEIGHTS.stability],
   ];
+  let ecc = 1;
   if (parts.eccentricity !== undefined && parts.eccentricity !== null) {
-    throw new Error(
-      'computeTotalScore: eccentricity con valor numérico aún no aprobada (T3 CANDIDATE) — pasar null hasta aprobación humana',
-    );
+    ecc = parts.eccentricity;
   }
   const wSum = entries.reduce((acc, [, w]) => acc + w, 0);
-  const total = entries.reduce((acc, [v, w]) => acc + v * w, 0) / wSum;
+  const base = entries.reduce((acc, [v, w]) => acc + v * w, 0) / wSum;
+  const total = base * ecc;
   return {
     sharpness: parts.sharpness,
     exposure: parts.exposure,
     stability: parts.stability,
-    eccentricity: 1,
+    eccentricity: ecc,
     specular: specularRatio,
     total: Math.min(1, Math.max(0, total)),
     isBlur: sharpnessVar < BLUR_THRESHOLD,

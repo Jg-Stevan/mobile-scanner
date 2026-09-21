@@ -176,15 +176,99 @@ describe('total (pesos 0.4/0.3/0.3 + renormalización)', () => {
     expect(q.total).toBeCloseTo(0.4 * 0.8 + 0.3 * 0.6 + 0.3 * 0.4, 12);
     expect(q.eccentricity).toBe(1); // neutro mientras esté bloqueada
   });
-  it('eccentricity numérica → throw (CANDIDATE sin aprobación humana)', () => {
-    expect(() =>
-      computeTotalScore(
-        { sharpness: 1, exposure: 1, stability: 1, eccentricity: 0.9 },
-        300,
-      ),
-    ).toThrow(/CANDIDATE/);
-    expect(() => computeEccentricityScore(Q(), 640, 480)).toThrow(/CANDIDATE/);
+describe('eccentricity (APROBADA humano 2026-09-21, T3-b)', () => {
+  // Frame 640×480 → lado corto 480 → margin = 0.05·480 = 24px.
+  const W = 640;
+  const H = 480;
+  it('quad centrado (esquinas ≥ 24px del borde) → 1.0', () => {
+    const q: Quadrilateral = [
+      { x: 100, y: 100 },
+      { x: 540, y: 100 },
+      { x: 540, y: 380 },
+      { x: 100, y: 380 },
+    ];
+    expect(computeEccentricityScore(q, W, H)).toBe(1.0);
   });
+  it('esquina a exactamente margin (24px) → 1.0 (frontera)', () => {
+    const q: Quadrilateral = [
+      { x: 24, y: 100 },
+      { x: 540, y: 100 },
+      { x: 540, y: 380 },
+      { x: 100, y: 380 },
+    ];
+    expect(computeEccentricityScore(q, W, H)).toBeCloseTo(1.0, 12);
+  });
+  it('esquina a mitad de margin (12px) → 0.5', () => {
+    const q: Quadrilateral = [
+      { x: 12, y: 100 },
+      { x: 540, y: 100 },
+      { x: 540, y: 380 },
+      { x: 100, y: 380 },
+    ];
+    expect(computeEccentricityScore(q, W, H)).toBeCloseTo(0.5, 12);
+  });
+  it('esquina sobre el borde (x=0) → 0.0', () => {
+    const q: Quadrilateral = [
+      { x: 0, y: 100 },
+      { x: 540, y: 100 },
+      { x: 540, y: 380 },
+      { x: 100, y: 380 },
+    ];
+    expect(computeEccentricityScore(q, W, H)).toBe(0.0);
+  });
+  it('esquina fuera del frame (x=-10) → 0.0 (clamp)', () => {
+    const q: Quadrilateral = [
+      { x: -10, y: 100 },
+      { x: 540, y: 100 },
+      { x: 540, y: 380 },
+      { x: 100, y: 380 },
+    ];
+    expect(computeEccentricityScore(q, W, H)).toBe(0.0);
+  });
+  it('UNA sola esquina cerca del borde → domina la peor', () => {
+    // Tres esquinas a 100px+, una a 6px → 6/24 = 0.25.
+    const q: Quadrilateral = [
+      { x: 100, y: 100 },
+      { x: 540, y: 100 },
+      { x: 540, y: 380 },
+      { x: 100, y: 6 },
+    ];
+    expect(computeEccentricityScore(q, W, H)).toBeCloseTo(0.25, 12);
+  });
+  it('frame inválido (lado ≤ 0) → 0 sin romper', () => {
+    expect(computeEccentricityScore(Q(), 0, 480)).toBe(0);
+    expect(computeEccentricityScore(Q(), 640, -1)).toBe(0);
+  });
+  it('integración multiplicativa: base 1.0 × ecc 0.5 → 0.5; null → 1.0; 1 → 1.0', () => {
+    const base = { sharpness: 1, exposure: 1, stability: 1 };
+    const penalized = computeTotalScore({ ...base, eccentricity: 0.5 }, 300);
+    expect(penalized.total).toBeCloseTo(0.5, 12);
+    expect(penalized.eccentricity).toBe(0.5);
+    expect(computeTotalScore({ ...base, eccentricity: null }, 300).total).toBeCloseTo(
+      1.0,
+      12,
+    );
+    const neutral = computeTotalScore({ ...base, eccentricity: 1 }, 300);
+    expect(neutral.total).toBeCloseTo(1.0, 12);
+    expect(neutral.eccentricity).toBe(1);
+  });
+  it('eccentricity 0.3 sostenida impide el disparo aunque sharpness/exposure/stability sean altas', () => {
+    // base perfecta 1.0 × 0.3 = 0.3 < 0.8 → la racha nunca supera el umbral.
+    const total = computeTotalScore(
+      { sharpness: 1, exposure: 1, stability: 1, eccentricity: 0.3 },
+      300,
+    ).total;
+    expect(total).toBeCloseTo(0.3, 12);
+    expect(
+      shouldTriggerShutter([
+        { t: 0, score: total },
+        { t: 100, score: total },
+        { t: 200, score: total },
+        { t: 400, score: total },
+      ]),
+    ).toBe(false);
+  });
+});
 });
 
 describe('timeout (escape a manual)', () => {

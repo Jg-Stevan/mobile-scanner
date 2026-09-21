@@ -37,7 +37,10 @@
   humana) + 21 tests nuevos (backpressure por timestamps, racha de shutter,
   renormalización exacta). 40/40 tests, quality.ts 100% líneas, tsc limpio.
   Evidencia en `PLAN_EVIDENCE/T3-quality/`.
-
+- **T3-b cerrada (2026-09-21 · /ship doble APROBADO):** excentricidad aprobada
+  implementada (computeEccentricityScore: margin 5% lado corto, peor domina;
+  total = base × ecc, shutter la hereda). 48/48 tests, quality.ts 100% líneas,
+  tsc limpio. Evidencia en `PLAN_EVIDENCE/T3-b-eccentricity/`.
 ## Tareas en Progreso
 - _F0 spike: instrumento HTML generado, pendiente ejecución HUMANA en 2-3 dispositivos reales (incl. iPhone físico)._
 
@@ -55,6 +58,11 @@
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;
   aviso de cap >3500px añadido al log. Re-validado sin errores.
 - Los agentes NO re-discuten decisiones del maestro; proponen por escrito, nunca inline (ver AGENTS.md).
+- **Aprobación humana 2026-09-21 (excentricidad):** ECCENTRICITY_MARGIN = 0.05
+  del lado corto; score = mín de clamp(dMin/margin, 0, 1) por esquina;
+  integración MULTIPLICATIVA (total = base × ecc) — la fórmula §5-F2 queda
+  intacta. Adjudicación: la renormalización genérica Σ(w·v)/Σ(w) de T3 rige
+  sobre el "(0.4/0.7…)" ambiguo del brief (sumaría >1).
 
 ## Desviaciones Documentadas
 - **D1 (aceptada por humano · 2026-09-21 · tarea T1):** formato de referencia A4 → CARTA (8.5 × 11 in). Motivo: estándar regional + disponibilidad real de papel carta en el entorno de medición. A4 queda como alternativa documentada.
