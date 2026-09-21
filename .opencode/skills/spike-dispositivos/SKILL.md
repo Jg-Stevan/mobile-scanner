@@ -5,7 +5,7 @@ description: Use for the F0 device spike (dias 1-2): generating the diagnostic H
 
 # Spike de Dispositivos (F0)
 
-Fuente de verdad: PLAN_MAESTRO v3.0, sección 5 · F0 (Spike, días 1-2) y sección 4.
+Fuente de verdad: PLAN_MAESTRO v3.1, sección 5 · F0 (Spike, días 1-2) y sección 4.
 
 > 🚧 **REGLA DIVISIÓN AGENTE/HUMANO:** el agente genera instrumentos (HTML del spike, logs, plantillas). **SOLO un humano** ejecuta en dispositivos físicos reales (getUserMedia no se valida desde IDE ni BrowserStack) y reporta los resultados. Nadie "rellena" la checklist con supuestos.
 
@@ -29,18 +29,18 @@ track.width x height : ej. 1280x720
 aspect ratio         : ej. 16:9 (NUNCA asumir; es un crop del sensor)
 capabilities.torch   : true|false
 capabilities.focusMode : continuous|manual|...
-dpiRuntime           : anchoQuadPx / 8.27   (DPR del papel A4 en runtime, no prometido)
+dpiRuntime           : anchoQuadPx / 8.5   (DPR del papel Carta en runtime, no prometido; A4 = 8.27 alternativa)
 settings verificados : getSettings() real, no ideal
 ```
 
 ## Plantilla de tabla DPI por dispositivo (sección 4 del maestro)
 
-| Dispositivo | Ruta | Resolución | DPI efectivo (A4 llenando encuadre) | Nota |
+| Dispositivo | Ruta | Resolución | DPI efectivo (Carta llenando encuadre) | Nota |
 |---|---|---|---|---|
-| (día 1) | A: takePhoto (Android) | 3000×4000 | ~360 | Ruta de calidad Android |
-| (día 2) | B: drawImage track (iOS auto) | 1080 ancho | ~130-165 | Lectura/OCR ok; NO impresión |
-| (día 2, si getSettings 4K) | B: drawImage track | 2160 ancho | ~260-330 | El spike lo determina por modelo |
-| (día 2) | C: input capture (iOS manual) | Full sensor | ~300+ | Ruta de calidad iOS, UX primera clase |
+| (día 1) | A: takePhoto (Android) | 3000×4000 | ~353–364 | Ruta de calidad Android |
+| (día 2) | B: drawImage track (iOS auto) | 1080 ancho | ~127–175 | Lectura/OCR ok; NO impresión |
+| (día 2, si getSettings 4K) | B: drawImage track | 2160 ancho | ~254–349 | El spike lo determina por modelo |
+| (día 2) | C: input capture (iOS manual) | Full sensor | ~356+ | Ruta de calidad iOS, UX primera clase |
 
 ## Flujo tras ejecución humana
 

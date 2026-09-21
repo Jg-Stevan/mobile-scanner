@@ -1,5 +1,7 @@
 node_modules/
 dist/
+coverage/
+.playwright-mcp/
 .env*
 .opencode/.secrets/
 .certs/

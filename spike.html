@@ -39,6 +39,7 @@
   .chk input { margin-right:6px; }
   .small { font-size:12px; }
   #torchBtn.on { background:#9a6700; color:#fff; }
+  #torchBtn.torch-ok { background:#22c55e; }
 </style>
 </head>
 <body>
@@ -46,7 +47,7 @@
 <p class="small">Instrumento generado por el pipeline (AGENTS.md · skill <code>spike-dispositivos</code>).
 La ejecución es <b>humana</b> en 2-3 dispositivos reales, incluyendo iPhone físico
 (getUserMedia no se valida sin hardware). Nada se hardcodea: toda resolución, capability o DPI
-se mide aquí. Fuente de verdad: PLAN_MAESTRO v3.0 §4 y §5-F0.</p>
+se mide aquí. Fuente de verdad: PLAN_MAESTRO v3.1 §4 y §5-F0.</p>
 
 <div class="card">
   <h2>Cámara</h2>
@@ -118,12 +119,12 @@ se mide aquí. Fuente de verdad: PLAN_MAESTRO v3.0 §4 y §5-F0.</p>
 </div>
 
 <div class="card">
-  <h2>Medición de DPI runtime (cuadrilátero manual sobre A4)</h2>
-  <p class="small">Coloque una hoja <b>A4 llenando el encuadre</b>. Arrastre las 4 esquinas del
+  <h2>Medición de DPI runtime (cuadrilátero manual sobre carta)</h2>
+  <p class="small">Coloque una hoja <b>tamaño carta, VERTICAL</b> llenando el encuadre (ancho visible = 8.5 in). Arrastre las 4 esquinas del
   polígono sobre la hoja; al confirmar se calcula <code>anchoQuadPx / anchoPapel(in)</code> en la
   resolución nativa del track. Esto mide DPI real de la ruta B/video.</p>
   <div class="kv"><span>Anchura de papel de referencia (in)</span>
-    <span><input id="paperWidthIn" type="number" step="0.01" value="8.27" style="width:90px"> in <span class="muted">(A4 = 8.27)</span></span></div>
+    <span><input id="paperWidthIn" type="number" step="0.01" value="8.5" style="width:90px"> in <span class="muted">(Carta = 8.5 · A4 = 8.27)</span></span></div>
   <div>
     <button id="dpiReset" class="danger">Reiniciar esquinas</button>
     <button id="dpiCompute" class="primary">Calcular DPI</button>
@@ -138,8 +139,8 @@ se mide aquí. Fuente de verdad: PLAN_MAESTRO v3.0 §4 y §5-F0.</p>
     </tbody>
   </table>
   <p class="small warn">Referencia del PLAN_MAESTRO §4 (NO es un valor supuesto: se mide): se
-  espera ~360 DPI en Android takePhoto; ~130-165 DPI en iOS track 1080p; ~260-330 si getSettings()
-  confirma 4K; &gt;300 DPI en input capture manual. Este instrumento solo reporta lo medido.</p>
+  espera ~353–364 DPI en Android takePhoto; ~127–175 DPI en iOS track 1080p; ~254–349 si getSettings()
+  confirma 4K; ~356+ DPI en input capture manual. Este instrumento solo reporta lo medido.</p>
 </div>
 
 <div class="card">
@@ -154,6 +155,7 @@ se mide aquí. Fuente de verdad: PLAN_MAESTRO v3.0 §4 y §5-F0.</p>
 
 <script>
 "use strict";
+const PAPER_DEFAULT_IN = 8.5; // Carta. A4 = 8.27 (ver PLAN_MAESTRO §4)
 const $ = (id) => document.getElementById(id);
 
 const els = {
@@ -178,7 +180,8 @@ async function refreshDevices() {
     alert("Este navegador no soporta enumerateDevices.");
     return;
   }
-  await navigator.mediaDevices.getUserMedia({ video: true }).then(() => {}).catch(() => {});
+  const tmp = await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => null);
+  if (tmp) tmp.getTracks().forEach(t => t.stop());
   devices = await navigator.mediaDevices.enumerateDevices();
   devices = devices.filter(d => d.kind === "videoinput");
   const sel = els.devSelect;
@@ -409,19 +412,22 @@ function native2disp(nx, ny) {
 function drawQuad() {
   const c = els.ctx, cv = els.dpiCanvas;
   c.clearRect(0, 0, cv.width, cv.height);
-  if (!els.video.videoWidth) return;
+  const nw = els.video.videoWidth, nh = els.video.videoHeight;
+  if (!nw || !nh) return;
   const r = displayRect();
   c.strokeStyle = "rgba(255,255,255,.25)"; c.strokeRect(r.x, r.y, r.w, r.h);
   c.strokeStyle = "#2da44e"; c.lineWidth = 2;
   c.beginPath();
-  quad.forEach((p, i) => { const d = native2disp(p.x, p.y); i ? c.lineTo(d.x, d.y) : c.moveTo(d.x, d.y); });
+  quad.forEach((p, i) => { const d = native2disp(p.x * nw, p.y * nh); i ? c.lineTo(d.x, d.y) : c.moveTo(d.x, d.y); });
   c.closePath(); c.stroke();
   c.fillStyle = "#2da44e";
-  quad.forEach(p => { const d = native2disp(p.x, p.y); c.beginPath(); c.arc(d.x, d.y, 7, 0, Math.PI*2); c.fill(); });
+  quad.forEach(p => { const d = native2disp(p.x * nw, p.y * nh); c.beginPath(); c.arc(d.x, d.y, 7, 0, Math.PI*2); c.fill(); });
 }
 function hitTest(px, py) {
   let best = -1, bd = 8;
-  quad.forEach((p, i) => { const d = native2disp(p.x, p.y); const dist = Math.hypot(px - d.x, py - d.y); if (dist < bd) { bd = dist; best = i; } });
+  const nw = els.video.videoWidth, nh = els.video.videoHeight;
+  if (!nw || !nh) return -1;
+  quad.forEach((p, i) => { const d = native2disp(p.x * nw, p.y * nh); const dist = Math.hypot(px - d.x, py - d.y); if (dist < bd) { bd = dist; best = i; } });
   return best;
 }
 function onPointerDown(e) { const r = els.dpiCanvas.getBoundingClientRect(); quadDrag = hitTest(e.clientX - r.left, e.clientY - r.top); }
@@ -449,7 +455,7 @@ $("dpiCompute").addEventListener("click", () => {
   const dx = Math.hypot(quad[1].x - quad[0].x, quad[1].y - quad[0].y) * nw;
   const bx = Math.hypot(quad[2].x - quad[3].x, quad[2].y - quad[3].y) * nw;
   const anchoQuadPx = (dx + bx) / 2;
-  const paperIn = Number($("paperWidthIn").value) || 8.27;
+  const paperIn = Number($("paperWidthIn").value) || PAPER_DEFAULT_IN;
   els.vdpiTop.textContent = dx.toFixed(1) + " px";
   els.vdpiBottom.textContent = bx.toFixed(1) + " px";
   els.vdpiWidth.textContent = anchoQuadPx.toFixed(1) + " px";
@@ -468,7 +474,7 @@ function collectReport(ml) {
     "- drawImage: " + els.drawImageResult.textContent,
     "- input capture: " + els.inputCaptureResult.textContent,
     "- EXIF createImageBitmap: " + els.exifResult.textContent,
-    "- DPI runtime medido: " + els.vdpiDpi.textContent + " (anchoQuadPx=" + els.vdpiWidth.textContent + ", papel=" + ($("paperWidthIn").value || 8.27) + " in)",
+    "- DPI runtime medido: " + els.vdpiDpi.textContent + " (anchoQuadPx=" + els.vdpiWidth.textContent + ", papel=" + ($("paperWidthIn").value || PAPER_DEFAULT_IN) + " in)",
     "",
     "- CameraProfile log:",
     ...els.cameraProfileLog.textContent.split("\n").map(l => "  " + l),

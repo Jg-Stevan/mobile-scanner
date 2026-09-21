@@ -1,7 +1,10 @@
-# 📋 PLAN MAESTRO v3.0 (Consolidado)
+# 📋 PLAN MAESTRO v3.1 (Consolidado)
 ## Digitalizador de Documentos en Navegador — Cliente-Side
 
 > Documento único de referencia. Incorpora las 5 rondas de revisión: documento teórico → plan v1 → triaje de 3 análisis → v2 → análisis final. **Congelado para ejecución.**
+
+## Changelog
+- **v3.1 — D1:** formato carta como referencia (spike, diana F4, export F5). Tabla §4 recalculada.
 
 ---
 
@@ -80,14 +83,16 @@ flowchart TB
 
 > ⚠️ **Verificado en revisión final:** la cifra "~220 DPI iOS" era incorrecta. La tabla correcta — el spike de F0 confirma cuál aplica a tu base de usuarios:
 
-| Ruta | Resolución | DPI efectivo (A4 llenando encuadre) | Nota |
+| Ruta | Resolución | DPI efectivo (Carta llenando encuadre) | Nota |
 |---|---|---|---|
-| Android `takePhoto()` 12MP | 3000×4000 | **~360 DPI** | Ruta de calidad en Android |
-| iOS track 1080p | 1080 ancho | **~130-165 DPI** | Lectura/OCR ok; NO impresión |
-| iOS track 4K (si `getSettings()` lo confirma) | 2160 ancho | ~260-330 DPI | El spike lo determina por modelo |
-| iOS manual (`input capture`) | Full sensor | **~300+ DPI** | **Es la ruta de calidad en iOS** — UX de primera clase, no escape |
+| Android `takePhoto()` 12MP | 3000×4000 | **~353–364 DPI** | Ruta de calidad en Android |
+| iOS track 1080p | 1080 ancho | **~127–175 DPI** | Lectura/OCR ok; NO impresión |
+| iOS track 4K (si `getSettings()` lo confirma) | 2160 ancho | ~254–349 DPI | El spike lo determina por modelo |
+| iOS manual (`input capture`) | Full sensor | **~356+ DPI** | **Es la ruta de calidad en iOS** — UX de primera clase, no escape |
 
-**Consecuencia de diseño:** el `CameraProfile` calcula y loguea DPI en runtime (`anchoQuadPx / 8.27`). El copy de producto no promete calidad uniforme entre plataformas.
+*Nota: las cifras exactas las fija el spike real por dispositivo; la tabla es referencia.*
+
+**Consecuencia de diseño:** el `CameraProfile` calcula y loguea DPI en runtime (`anchoQuadPx / 8.5`; A4 = 8.27 disponible como alternativa). El copy de producto no promete calidad uniforme entre plataformas.
 
 ---
 
@@ -188,7 +193,7 @@ flowchart TB
 3. **Validación post-refine:** convexidad + no-auto-intersección + área → si un lado falla, **fallback a la esquina de 480p solo para ese lado** + marcar para el editor
 
 **Presupuesto de memoria (crítico en móviles de 3GB):**
-- **Cap del lado largo de salida: ~3500px** (A4 a 300 DPI reales; más es desperdicio)
+- **Cap del lado largo de salida: ~3500px** (3500/11 = ~318 DPI en carta → cap VALIDADO, sin cambio numérico; más es desperdicio)
 - Estimación del fondo de sombras (dilatación+mediana) sobre versión **reducida**, nunca sobre 12MP
 - Picos objetivo: <150MB
 
@@ -204,7 +209,7 @@ flowchart TB
 | Revertir a auto / confirmar | Re-warp al confirmar |
 | **Modo etiquetado (opt-in)** | Loguea el quad automático de **TODAS** las capturas (+ el ajustado si existe). ⚠️ Etiquetar solo correcciones = dataset de solo fallos (**sesgo de selección**); revisión humana periódica de una muestra de las correctas |
 | **Set de test congelado** | 50-100 imágenes estratificadas por condición que **jamás** tocan entrenamiento (evita fuga de evaluación) |
-| **Diana de calibración** | A4 impreso con esquinas a distancias conocidas (mm) → script en `tests/bench/` → reportar "error ±X mm al 95%" |
+| **Diana de calibración** | Carta impresa (8.5×11 in) con esquinas a distancias conocidas (mm) → script en `tests/bench/` → reportar "error ±X mm al 95%" |
 
 **✅ DoD:** Corregir una esquina en <2s; colector de dataset corriendo con datos balanceados.
 
@@ -223,7 +228,7 @@ flowchart TB
 
 **Resto:**
 - Cola multipágina (miniaturas, reorder, delete) → IndexedDB con **`storage.persist()` + `estimate()`** (iOS purga IndexedDB de PWAs poco usadas → aviso si cuota apretada o páginas sin exportar)
-- PDF multipágina (pdf-lib), fit A4/Letter
+- PDF multipágina (pdf-lib), fit Letter (default, D1) / A4 opcional
 - **Harness de calidad CER** (la mejor relación costo/beneficio restante, 1-2 días): Tesseract.js/PaddleOCR sobre ~30 documentos fijos propios, antes/después del enhance, por modo y categoría → si CLAHE agresivo sube el CER en papel satinado, lo sabes con número
 - `navigator.share()` para exportar
 
@@ -251,7 +256,7 @@ flowchart TB
 | Tarea | Detalle |
 |---|---|
 | **Datos (el critical path son los datos, no el modelo)** | Fine-tune YOLOv8n-pose (4 kp) sobre dataset PROPIO: 300-500 imágenes + augmentations (100-200 es marginal). Hard-example mining de los logs de timeout de 8s |
-| ⚠️ Licencia | **MIDV-500 = CC BY-NC-SA (NO comercial).** Solo sanity-check en investigación; NUNCA entrenamiento para producto comercial. El mismatch de dominio (IDs vs A4/recibos) ya lo hacía poco útil |
+| ⚠️ Licencia | **MIDV-500 = CC BY-NC-SA (NO comercial).** Solo sanity-check en investigación; NUNCA entrenamiento para producto comercial. El mismatch de dominio (IDs vs carta/A4/recibos) ya lo hacía poco útil |
 | Export | ONNX → cuantización INT8 (~4-6MB) |
 | Runtime | `onnxruntime-web`, `executionProviders:['webgpu','wasm']` (fallback automático) |
 | Integración | Mismo contrato "4 esquinas"; híbrido: clásico primero, DL si score bajo |
@@ -318,7 +323,7 @@ mobile-scanner/
 
 | Riesgo | Prob | Mitigación |
 |---|---|---|
-| iOS auto = 1080p (~130-165 DPI) | Alta | Ruta manual es la de calidad, UX primera clase; spike verifica 4K por modelo |
+| iOS auto = 1080p (~127-175 DPI) | Alta | Ruta manual es la de calidad, UX primera clase; spike verifica 4K por modelo |
 | Techo distorsión de lente | Media | Documentado; tele + excentricidad; 1-2px aceptado |
 | Leaks WASM | Media | `withMats()` + estrés 10min |
 | opencv.js 8MB | Alta | Lazy + SW + build custom 2-3MB |
