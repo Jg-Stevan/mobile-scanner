@@ -37,6 +37,15 @@ Fecha: 2026-09-22 · Baseline Samsung: 12.3 portrait / 13.1 landscape (<15).
   "PLAN_EVIDENCE/ (solo escritura de reportes)".
 - Veredicto final: APROBADO.
 
+## P3 — Reducción 480→400 (PROCESS_LONG_SIDE, origen citado en protocol.ts)
+- Regresión (`bench-400.json`, 225×400): a✓0.0026 c✓0.0042 d✓0.0034 e✓f✓ +
+  b✗ intacto. TODO ≤0.005 ✓ (c/d suben vs 0.0023 — pérdida documentada como
+  insumo de calibración del CornerRefiner F3, no bloquea).
+- E2E sintético (`live-400.json`, escena GT): **29.4 FPS desktop** (vs 14.6 a
+  480p — escala 2× con píxeles, confirma el diagnóstico), gtErr 0.0027
+  intacto, latencia p95 21ms, captureErrors 0.
+- Redeploy /f1/ con P3 (bundle verificado: `400/Math.max`).
+
 ## Medición pendiente (humano, SM-A566E, misma URL mode=camera)
 - P2: FPS portrait + landscape. Δ ≥ +1 y ≥15 → cerrar F1-opt. Δ < +1 → P3
   inmediato (PROCESS_LONG_SIDE 480→400). Agotadas sin ≥15 → D7 (si ≥12).

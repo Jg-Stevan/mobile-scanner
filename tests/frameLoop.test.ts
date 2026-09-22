@@ -174,12 +174,12 @@ describe('frameLoop backpressure', () => {
   });
 });
 
-describe('computeProcessDims (F1 Fase 0: preserve por defecto)', () => {
-  it('9:16 portrait → 270×480 (lado mayor 480)', () => {
-    expect(computeProcessDims(1080, 1920, 'preserve')).toEqual({ w: 270, h: 480 });
+describe('computeProcessDims (F1-opt P3: preserve lado mayor 400)', () => {
+  it('9:16 portrait → 225×400 (lado mayor 400)', () => {
+    expect(computeProcessDims(1080, 1920, 'preserve')).toEqual({ w: 225, h: 400 });
   });
-  it('4:3 landscape → 480×360', () => {
-    expect(computeProcessDims(640, 480, 'preserve')).toEqual({ w: 480, h: 360 });
+  it('4:3 landscape → 400×300', () => {
+    expect(computeProcessDims(640, 480, 'preserve')).toEqual({ w: 400, h: 300 });
   });
   it('squash o dims inválidas → fallback 640×480', () => {
     expect(computeProcessDims(1080, 1920, 'squash')).toEqual({ w: 640, h: 480 });
@@ -213,7 +213,7 @@ describe('computeProcessDims (F1 Fase 0: preserve por defecto)', () => {
     });
     queued[0]!();
     await new Promise((r) => setTimeout(r, 0));
-    expect(seen).toEqual([[270, 480]]);
+    expect(seen).toEqual([[225, 400]]);
     handle.stop();
   });
 });

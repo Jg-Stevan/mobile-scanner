@@ -9,10 +9,13 @@
 export const PROCESS_WIDTH = 640;
 export const PROCESS_HEIGHT = 480;
 
-/** Lado mayor de proceso en modo PRESERVE (F1 Fase 0: gana por empate en
- *  detección + ~35% menos píxeles + ~10ms vs segundos en ruido).
- *  9:16 → 270×480. Evidencia: PLAN_EVIDENCE/F1/bench-fase0.json. */
-export const PROCESS_LONG_SIDE = 480;
+/** Lado mayor de proceso en modo PRESERVE (F1-opt P3: 400 — era 480).
+ *  Origen: F1-opt P3, aprobación humana A-primero (2026-09-22); evidencia P1/P2:
+ *  bottleneck Exynos = costo fijo por píxel (−30% píxeles esperado ≈ +20-30%
+ *  FPS). Trade-off: menor precisión de detección AMORTIGUADA por el
+ *  CornerRefiner de F3 (refina a resolución completa sobre la foto hi-res).
+ *  9:16 → 225×400. Evidencia: PLAN_EVIDENCE/F1-opt/bench-400.json. */
+export const PROCESS_LONG_SIDE = 400;
 
 export type ResizeMode = 'squash' | 'preserve';
 

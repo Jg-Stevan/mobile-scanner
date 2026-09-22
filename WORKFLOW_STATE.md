@@ -69,9 +69,16 @@
   portrait) — quirk de getSettings; el detector es inmune (fracciones).
   Evidencia en `PLAN_EVIDENCE/F1-b/`.
 - **F1-opt P1: SIN EFECTO en Samsung (medición humana 2026-09-22):** 11.0
-  portrait / 13.6 landscape vs baseline 12.3/13.1 (ruido). Análisis registrado:
-  bottleneck Exynos = costo fijo por píxel + transporte, no conteo de contornos
-  (P1 solo ayudó en iPhone de fondo texturizado). P2+P3 según secuencia aprobada.
+  portrait / 13.6 landscape vs baseline 12.3/13.1 (ruido). Bottleneck Exynos =
+  costo fijo por píxel + transporte (P1 solo ayudó en iPhone texturizado).
+- **F1-opt P2: SIN EFECTO esperado y confirmado en regresión (sintético):**
+  cap 8 intacto en fixtures (mismos errores). Medición humana P2: 12.3
+  portrait (Δ=0) → regla Δ<+1 disparó P3.
+- **F1-opt P3 implementada (2026-09-22 · /ship doble APROBADO, NO validada):**
+  PROCESS_LONG_SIDE 480→400 (origen citado, trade-off CornerRefiner F3).
+  Regresión ≤0.005 ✓ (c 0.0042 anotado para F3); E2E sintético 29.4 FPS desktop
+  (2×, confirma diagnóstico). Redeploy /f1/ con P3 (bundle verificado).
+  ⏳ Falta FPS humano en SM-A566E: ≥15 cierra · ≥12 D7 (+frase fluidez) · <12 STOP.
   Evidencia en `PLAN_EVIDENCE/F1-opt/`.
 - **T6 cerrada (2026-09-22 · /ship doble APROBADO):** cierre del spike
   (D5/D6, takePhoto-iOS sin boost, decisiones 1-3, matriz congelada) + push de
