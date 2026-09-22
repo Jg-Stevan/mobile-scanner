@@ -93,6 +93,8 @@ flowchart TB
 *Nota: las cifras exactas las fija el spike real por dispositivo; la tabla es referencia.*
 
 > 📌 **Medición real SM-A566E (T1-R4, spike Android):** `takePhoto` ≈ 240 DPI con encuadre natural (ratio video 9:16 vs foto 3:4 → el papel llena ~66% del ancho de la foto). La re-detección F3 está CONFIRMADA por hardware (aspect ratios distintos en el mismo dispositivo).
+>
+> 📌 **Medición real iPhone 17 Pro (T6, spike iOS — decisiones 1-3 CERRADAS):** track 4K 2160×3840 confirmado (~254 DPI teórico; medido 209-223) → auto-shutter iOS viable sin degradación. `takePhoto` existe en Safari (0/5 fallos, 227-426ms) pero SIN boost (== track): rutas A/B equivalentes en iOS. Manual: 3024×4032 (~309 DPI tras cap). Ambos dispositivos convergen a ~309 DPI tras el cap: el cap normaliza la salida. Matriz completa congelada en WORKFLOW_STATE (T6).
 
 **Consecuencia de diseño:** el `CameraProfile` calcula y loguea DPI en runtime (`anchoQuadPx / 8.5`; A4 = 8.27 disponible como alternativa). El copy de producto no promete calidad uniforme entre plataformas.
 
@@ -102,13 +104,13 @@ flowchart TB
 
 ### 📍 F0 — Fundaciones + SPIKE (5 días)
 
-**Spike (días 1-2, en 2-3 dispositivos REALES — BrowserStack no sirve para getUserMedia; incluye iPhone físico):**
+**Spike (días 1-2, en 2-3 dispositivos REALES — BrowserStack no sirve para getUserMedia; incluye iPhone físico): ✅ COMPLETADO (T6: SM-A566E + iPhone 17 Pro, matriz congelada en WORKFLOW_STATE)**
 
-- [ ] `getSettings()` → ¿track 4K disponible en iOS moderno? (define la tabla de DPI real)
-- [ ] `takePhoto()`: resolución, latencia, fallos por dispositivo
-- [ ] iOS: ¿`<input capture>` permite 1 foto por gesto o varias? (define flujo multipágina)
-- [ ] `createImageBitmap(blob, {imageOrientation:'from-image'})` en Safari
-- [ ] Capabilities: `torch`, `focusMode`, **teleobjetivo/lente principal** (¿`enumerateDevices()` las lista?)
+- [x] `getSettings()` → ¿track 4K disponible en iOS moderno? (define la tabla de DPI real) — **SÍ: 2160×3840 (T6)**
+- [x] `takePhoto()`: resolución, latencia, fallos por dispositivo — **Android 3060×4080 ~940ms; iOS 2160×3840 227-426ms sin boost (T6)**
+- [x] iOS: ¿`<input capture>` permite 1 foto por gesto o varias? (define flujo multipágina) — **1/gesto (T6)**
+- [x] `createImageBitmap(blob, {imageOrientation:'from-image'})` en Safari — **✓ (T5 E2E + spike)**
+- [x] Capabilities: `torch`, `focusMode`, **teleobjetivo/lente principal** (¿`enumerateDevices()` las lista?) — **torch ✓ ambos (toggle iOS por verificar); focusMode solo Android → D6 por label en iOS (T6)**
 
 **Construcción (días 3-5):**
 

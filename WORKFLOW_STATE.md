@@ -49,6 +49,10 @@
   revisor-b con 2 findings desestimados por orquestador (640×480 es mandato del
   spec, no hardcode; e2e-60s.json sí existe). Evidencia en
   `PLAN_EVIDENCE/T4-worker/`.
+- **T6 cerrada (2026-09-22 · /ship doble APROBADO):** cierre del spike
+  (D5/D6, takePhoto-iOS sin boost, decisiones 1-3, matriz congelada) + push de
+  6 commits y redeploy Pages verificado (marcadores T1-R4 en servido + raw
+  poblado en público). Evidencia en `PLAN_EVIDENCE/T6/`.
 - **T5-camera cerrado (código · 2026-09-21 · /ship APROBADO con adjudicación):**
   CameraController (D3, gUM en cascada 3840 ideal sin ratio, profile, torch,
   orientación) + hiResCapture (rutas A/B/C primitivas + EXIF). 89/89 tests,
@@ -58,7 +62,9 @@
   `ideal` de entrada — el spec T5 exige 3840). ⏳ Falta validación humana en
   SM-A566E (ver arriba). Evidencia en `PLAN_EVIDENCE/T5-camera/`.
 ## Tareas en Progreso
-- _F0 spike: instrumento HTML generado, pendiente ejecución HUMANA en 2-3 dispositivos reales (incl. iPhone físico)._
+- _F0 spike humano: ejecución COMPLETADA en Android + iPhone (T6) — queda solo el
+  pendiente menor del toggle torch real en iOS._
+- _T5-humano SM-A566E pendiente (selección camera 0, profile, ruta A) — ver abajo._
 
 ## Backlog F1 (notas registradas 2026-09-21, revisión externa T4 — no bloquean T4)
 - Benchmark de detección real en 2 condiciones (matiz del finding 1 de revisor-b,
@@ -82,7 +88,8 @@
 - T4.1 `opencode mcp list` → 4/4 desde mobile-scanner — ⏳ **última pendiente** (CLI cuelga; visual TUI)
 
 ## Decisiones de Arquitectura
-- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: T2 núcleo matemático (F0 spike pendiente de ejecución humana)
+- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: F1 QuadDetector (spike
+  humano COMPLETADO Android + iPhone · T6; matriz congelada abajo en Desviaciones)
 - **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
   adaptación: T4.1 `opencode mcp list` en TUI.
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;
@@ -100,3 +107,32 @@
 - **D3 (registrada · T1-R4 · spike Android):** criterio de selección de cámara = `focusMode` con "continuous"/"single-shot" (autofocus real). Cámaras solo-[manual] = fixed-focus → descartadas. Validado: cámara 2 (ultra-wide) sin AF y sin torch → descartada.
 - **D4 (registrada · T1-R4 · spike Android):** la ruta C (`input capture`) ignora el `deviceId` seleccionado; siempre usa la principal de la app nativa (validado: 6120×8160 con ambas cámaras).
 - **Corrección de expectativa §4 (registrada · T1-R4 · spike Android SM-A566E):** `takePhoto` Android con encuadre natural (preview 9:16, el papel no llena la foto 3:4) ≈ **220-240 DPI**, no ~353. El teórico 353 asumía el papel llenando la foto — condición no alcanzable desde el preview. Validado: video 225 DPI (88.6% encuadre).
+- **D5 (registrada · T6 · spike iPhone 17 Pro):** iOS expone grupos virtuales de
+  dispositivos (no lentes individuales); los 3 grupos traseros midieron track
+  idéntico 2160×3840. Control fino de lente en iOS = constraint de `zoom`, no `deviceId`.
+- **D6 (registrada · T6 · spike iPhone):** iOS NO expone `focusMode` (— en los 3
+  grupos) → D3 cae al fallback T5. Extensión: heurística por label — preferir el
+  grupo simple "Cámara trasera", descartar "ultra gran angular"/"tele" como principal.
+- **Actualización takePhoto iOS (registrada · T6 · spike iPhone):**
+  `ImageCapture.takePhoto` EXISTE en Safari moderno (0/5 fallos, 227-426ms, más
+  rápido que SM-A566E ~940ms) PERO sin boost de resolución (2160×3840 == track).
+  En iOS las rutas A/B son funcionalmente equivalentes; el diseño T5 (detección +
+  fallback) ya lo maneja sin cambios de código.
+
+## Matriz de Dispositivos (congelada 2026-09-21 · T6, evidencia del spike)
+| Ruta | Android SM-A566E | iPhone 17 Pro |
+|---|---|---|
+| Track | 2160×3840 · 254 DPI teórico · medido 206-225 | 2160×3840 · 254 DPI teórico · medido 209-223 |
+| Auto takePhoto | 3060×4080 (boost) · ~940ms · ~240 DPI natural | 2160×3840 (sin boost) · 227-426ms · == ruta B |
+| Auto drawImage | 2160×3840 | 2160×3840 |
+| Manual input | 6120×8160 (50MP) · ~309 DPI tras cap | 3024×4032 (12MP binned de 48MP) · ~309 DPI tras cap |
+| EXIF from-image | ✓ Chrome | ✓ Safari |
+| Torch | ✓ funcional | capabilities ✓ (toggle real por verificar — pendiente menor) |
+| Selección | D3 por focusMode ✓ | D6 por label (focusMode no expuesto) |
+| Multipage input | 1 foto/gesto | 1 foto/gesto → UI con retorno fluido |
+
+Decisiones cerradas con estos datos: (1) auto-shutter iOS con track 4K viable
+(~254 DPI teórico; ruta C como "máxima calidad" opcional); (2) multipágina 1
+foto/gesto en ambas plataformas; (3) matriz final arriba. Ambos dispositivos
+convergen a ~309 DPI tras el cap de 3500px: el cap normaliza la salida
+independiente del sensor.
