@@ -41,15 +41,19 @@ export const SPECULAR_RATIO_WARN = 0.03;
 /** Varianza de posiciones de quads (px²) normalizada a 480p (doc teórico). */
 export const STABILITY_VAR_NORM = 20.0;
 
-/** Ventana TEMPORAL de estabilidad en ms (v3: por timestamps, no por frames —
- *  el backpressure descarta frames y el índice miente). */
-export const STABILITY_WINDOW_MS = 300;
+/** Ventana TEMPORAL de estabilidad en ms (APROBADA por humano 2026-09-22 F2-b:
+ *  600ms — caso acta densa a 2.9 FPS: muestras cada ~345ms nunca caen en 300ms
+ *  → inanición → estabilidad estructural 0 → score techo ~0.65 → auto jamás
+ *  dispara. Cero costo de precisión; costo: +300ms de hold nominal). */
+export const STABILITY_WINDOW_MS = 600;
 
 /** Trigger de disparo: score compuesto por encima de 0.8 (v3 §5-F2). */
 export const SHUTTER_SCORE = 0.8;
 
-/** El score debe superar SHUTTER_SCORE de forma sostenida 300ms (v3 §5-F2). */
-export const SHUTTER_HOLD_MS = 300;
+/** El score debe superar SHUTTER_SCORE de forma sostenida 600ms (APROBADA por
+ *  humano 2026-09-22 F2-b: inanición de ventanas en acta densa — 345ms entre
+ *  muestras → 300ms nunca contiene 2). */
+export const SHUTTER_HOLD_MS = 600;
 
 /** Sin detección >8s → escape a captura manual (v3 §5-F2). */
 export const NO_DETECT_TIMEOUT_MS = 8000;

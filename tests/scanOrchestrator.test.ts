@@ -109,11 +109,11 @@ function setup(over: Partial<OrchestratorDeps> = {}) {
 }
 
 describe('FSM + auto-shutter por racha', () => {
-  it('estable >0.8 durante 310ms → capturing → captured → cooldown → detecting', async () => {
+  it('estable >0.8 durante 600ms → capturing → captured → cooldown → detecting', async () => {
     const t = setup();
     t.ctl.start();
     expect(t.ctl.getState()).toBe('detecting');
-    for (const ts of [0, 100, 200, 300, 400]) t.feed(ts);
+    for (const ts of [0, 100, 200, 400, 600, 700]) t.feed(ts);
     await new Promise((r) => setTimeout(r, 0));
     expect(t.ctl.getState()).toBe('captured');
     expect(t.events.captured).toHaveLength(1);
@@ -160,7 +160,7 @@ describe('burst-rank', () => {
       downscale: (async () => downs.shift() ?? docSharp()) as OrchestratorDeps['downscale'],
     });
     t.ctl.start();
-    for (const ts of [0, 100, 200, 300, 400]) t.feed(ts);
+    for (const ts of [0, 100, 200, 400, 600, 700]) t.feed(ts);
     await new Promise((r) => setTimeout(r, 0));
     const photo = t.events.captured[0] as { route: string; bitmap: ImageBitmap };
     expect(photo.route).toBe('B');
@@ -173,7 +173,7 @@ describe('burst-rank', () => {
       downscale: (async () => gray(10)) as OrchestratorDeps['downscale'],
     });
     t.ctl.start();
-    for (const ts of [0, 100, 200, 300, 400]) t.feed(ts);
+    for (const ts of [0, 100, 200, 400, 600, 700]) t.feed(ts);
     await new Promise((r) => setTimeout(r, 0));
     expect(t.ctl.getState()).toBe('detecting');
     expect(t.events.retries).toEqual(['reintentando…']);
@@ -194,7 +194,7 @@ describe('manual + escapes + cooldown', () => {
     const t = setup();
     expect(await t.ctl.captureManual()).toBe('busy');
     t.ctl.start();
-    for (const ts of [0, 100, 200, 300, 400]) t.feed(ts);
+    for (const ts of [0, 100, 200, 400, 600, 700]) t.feed(ts);
     await new Promise((r) => setTimeout(r, 0));
     expect(t.ctl.getState()).toBe('captured');
     expect(await t.ctl.captureManual()).toBe('busy'); // cooldown
@@ -211,6 +211,25 @@ describe('manual + escapes + cooldown', () => {
     t.feed(9000, null);
     expect(t.events.timeouts).toBe(1); // re-armado a 8100+8000
   });
+  it('F2-b: timeout NO vibra (solo toast) — distingue de captura', async () => {
+    const vibrate = vi.fn(() => true);
+    vi.stubGlobal('navigator', { vibrate });
+    const hist = new Array<number>(256).fill(0);
+    hist[128] = 1000;
+    let now = 0;
+    const ctl = new ScanOrchestrator({
+      deps: { now: () => now, sampleExposure: () => ({ hist }) },
+      cooldownMs: 10,
+    });
+    ctl.start();
+    const q: RawQualityInput = { laplacianVar: 20, cropMean: 128, cropStdDev: 20, frameW: 640, frameH: 480 };
+    now = 0;
+    ctl.onWorkerResult(q, null, 0);
+    now = 8100;
+    ctl.onWorkerResult(q, null, 8100);
+    expect(vibrate).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
   it('excentricidad mala → hint "Centra el documento" en onScore', async () => {
     const t = setup();
     t.ctl.start();
@@ -221,7 +240,7 @@ describe('manual + escapes + cooldown', () => {
   it('sampleExposure null → reutiliza última exposición (no rompe)', async () => {
     const t = setup({ sampleExposure: () => null });
     t.ctl.start();
-    for (const ts of [0, 100, 200, 300, 400]) t.feed(ts);
+    for (const ts of [0, 100, 200, 400, 600, 700]) t.feed(ts);
     await new Promise((r) => setTimeout(r, 0));
     expect(t.ctl.getState()).toBe('captured');
   });
@@ -284,7 +303,7 @@ describe('defaults de navegador (stubs DOM, vía flujos públicos)', () => {
       frameW: 640,
       frameH: 480,
     };
-    for (const ts of [0, 100, 200, 300, 400]) {
+    for (const ts of [0, 100, 200, 400, 600, 700]) {
       now = ts;
       ctl.onWorkerResult(q, CENTERED, ts);
     }
@@ -363,4 +382,5 @@ describe('defaults de navegador (stubs DOM, vía flujos públicos)', () => {
     vi.unstubAllGlobals();
   });
 });
+
 

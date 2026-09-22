@@ -202,7 +202,7 @@ export class ScanOrchestrator {
         return ctx.getImageData(0, 0, w, h);
       },
       notify: (kind: 'captured' | 'timeout') => {
-        void kind;
+        if (kind === 'timeout') return 'none'; // F2-b: vibración SOLO en captura (antes vibraba también en timeout cada 8s → indistinguible; toast ya avisa)
         try {
           const nav = navigator as Navigator & { vibrate?: (p: number) => boolean };
           if (typeof nav.vibrate === 'function' && nav.vibrate(50)) return 'haptic';
@@ -242,7 +242,9 @@ export class ScanOrchestrator {
     this.setState('idle');
   }
 
-  /** Entrada de cada result del worker (frameLoop.onResult). */
+  /** Dispara el timeout de no-detección: 8s sin quad → toast. F2-b: sin
+   *  vibración (solo visual — vibrar en timeout cada 8s era indistinguible de
+   *  la captura y el humano lo reportó como confusión). */
   onWorkerResult(q: RawQualityInput, corners: Float32Array | null, ts: number): void {
     if (this.state !== 'detecting') return;
     this.lastCorners = corners;

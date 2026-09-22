@@ -82,10 +82,14 @@
   humano en 2 dispositivos + D7. Evidencia en `PLAN_EVIDENCE/F1*/`.
 - **F2 cerrada (código · 2026-09-22 · /ship doble APROBADO):** ScanOrchestrator
   (FSM + burst-rank + manual + cooldown) + scoring puro + ScoreView.
-  151/151 tests, tsc limpio, cob ≥95%. E2E sintético: auto dispara 11× (ruta A),
+  151→153 tests, tsc limpio, cob ≥95%. E2E sintético: auto dispara 11× (ruta A),
   blur no dispara + manual retry, noquad manual con quad null. ⏳ Falta
   validación humana con papel CON TEXTO (Fase 0-empírica de umbrales).
   Evidencia en `PLAN_EVIDENCE/F2/`.
+- **F2-b cerrada (2026-09-22 · /ship doble APROBADO):** ventanas 300→600
+  (inanición acta densa) + timeout sin vibrar. 153/153 tests, tsc limpio.
+  P4 RECHAZADA → D8 (FPS overlay denso aceptado bajo). Redeploy /f2/.
+  Evidencia en `PLAN_EVIDENCE/F2-b/`.
 - **T6 cerrada (2026-09-22 · /ship doble APROBADO):** cierre del spike
   (D5/D6, takePhoto-iOS sin boost, decisiones 1-3, matriz congelada) + push de
   6 commits y redeploy Pages verificado (marcadores T1-R4 en servido + raw
@@ -163,10 +167,14 @@
   (cumplía ≥15 sin D7).
 - **Hallazgo "documento denso" (registrado · F2-a · test humano SM-A566E, acta
   electoral):** texto densísimo + papel llenando el frame → FPS 3.1 (racha
-  300ms imposible), falso "Muy oscuro" (sampler medía frame con mesa oscura),
-  ecc ~0.69 (comportamiento correcto). Fixes: sampler sobre crop del quad +
-  diag contourCount (dato para palanca FPS). Insumo F4/F6 (tolerancia contacto
-  y densidad). P4 (300px) pendiente de OK humano explícito.
+  600ms con 2.9 FPS sigue justa, pero F2-b corrige inanición), falso "Muy oscuro"
+  (corregido en F2-a con sampler sobre crop), ecc ~0.69 (comportamiento
+  correcto). Fixes: sampler sobre crop + diag contourCount. Insumo F4/F6.
+  **P4 (300px) RECHAZADA por humano 2026-09-22 → D8 ACTIVA.**
+- **D8 (ACTIVADA · humanas aprueban 2026-09-22 F2-b · P4 rechazada):** proceso a
+  300px rechazado (precisión > fluidez en densos; el manual cubre el extremo).
+  FPS del overlay en documentos densísimos aceptado bajo; la calidad del recorte
+  (F3) manda.
 
 ## Matriz de Dispositivos (congelada 2026-09-21 · T6, evidencia del spike)
 | Ruta | Android SM-A566E | iPhone 17 Pro |

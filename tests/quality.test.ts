@@ -86,18 +86,30 @@ describe('stability (ventana TEMPORAL por timestamps — backpressure)', () => {
   it('1 sola muestra en ventana → 0', () => {
     expect(computeStabilityScore([{ t: 900, quad: Q() }], 1000)).toBe(0);
   });
-  it('muestras fuera de la ventana de 300ms se IGNORAN (backpressure)', () => {
-    // t=500 está a 500ms de now=1000 → fuera; su quad salvaje no debe pesar.
-    // Si se incluyera por índice, la varianza explotaría y el score caería.
+  it('muestras fuera de la ventana de 600ms se IGNORAN (backpressure)', () => {
+    // El test original metía la muestra salvaje 500ms antes (fuera de ventana
+    // 300) para hundir el score si se colaba por índice. Con ventana 600 esa
+    // muestra cae DENTRO, así que la empujamos a 600ms (400) para mantener la
+    // intención: fuera de la ventana real → score intacto 1.0; el drift 400,300
+    // daría ~20000 de varianza si se incluyera (hundiría a 0).
     const history = [
-      { t: 500, quad: Q(400, 300) },
-      { t: 750, quad: Q() },
-      { t: 800, quad: Q() },
+      { t: 400, quad: Q(400, 300) },
       { t: 900, quad: Q() },
+      { t: 950, quad: Q() },
+      { t: 980, quad: Q() },
       { t: 1000, quad: Q() },
     ];
-    expect(computeStabilityScore(history, 1000)).toBe(1.0);
-    expect(STABILITY_WINDOW_MS).toBe(300);
+    // 400 está a 600ms exactos (≤) → dentro; 300 sí estaría fuera: usamos 300
+    const outside = [
+      { t: 300, quad: Q(400, 300) },
+      { t: 900, quad: Q() },
+      { t: 950, quad: Q() },
+      { t: 980, quad: Q() },
+      { t: 1000, quad: Q() },
+    ];
+    expect(computeStabilityScore(history, 1000)).toBeCloseTo(0, 6); // dentro → hunde
+    expect(computeStabilityScore(outside, 1000)).toBe(1.0); // fuera → intacto
+    expect(STABILITY_WINDOW_MS).toBe(600);
   });
   it('jitter conocido → 1 − meanVar/20 exacto (offset 10px en x, 2 muestras)', () => {
     // Varianza por coordenada x: ((−5)² + 5²)/2 = 25 en 4 esquinas;
@@ -115,43 +127,43 @@ describe('stability (ventana TEMPORAL por timestamps — backpressure)', () => {
   });
 });
 
-describe('shutter (racha continua por timestamps)', () => {
-  it('0.9 sostenido 310ms → true', () => {
+describe('shutter (racha continua por timestamps, F2-b: 600ms)', () => {
+  it('0.9 sostenido 610ms → true (600ms, inanición acta: 345ms necesita la ventana)', () => {
     expect(
       shouldTriggerShutter([
         { t: 0, score: 0.9 },
-        { t: 100, score: 0.9 },
-        { t: 200, score: 0.9 },
-        { t: 310, score: 0.9 },
+        { t: 345, score: 0.9 },
+        { t: 690, score: 0.9 },
       ]),
     ).toBe(true);
     expect(SHUTTER_SCORE).toBe(0.8);
-    expect(SHUTTER_HOLD_MS).toBe(300);
+    expect(SHUTTER_HOLD_MS).toBe(600);
   });
-  it('0.9 hace 200ms + 0.6 hace 150ms → false (racha rota)', () => {
+  it('0.9 hace 345ms (un salto de acta) pero sin 2ª muestra en 600ms → false', () => {
     expect(
       shouldTriggerShutter([
-        { t: 800, score: 0.9 },
-        { t: 850, score: 0.6 },
+        { t: 0, score: 0.9 },
+        { t: 345, score: 0.9 },
       ]),
     ).toBe(false);
   });
-  it('0.9 sostenido solo 250ms → false (no alcanzó los 300ms)', () => {
+  it('0.9 sostenido solo 500ms → false (no alcanzó los 600ms)', () => {
     expect(
       shouldTriggerShutter([
         { t: 0, score: 0.9 },
         { t: 100, score: 0.9 },
-        { t: 250, score: 0.9 },
+        { t: 345, score: 0.9 },
+        { t: 500, score: 0.9 },
       ]),
     ).toBe(false);
   });
-  it('fallo antiguo fuera de la ventana no contamina (semántica por tiempo)', () => {
+  it('fallo antiguo fuera de la ventana no contamina', () => {
     expect(
       shouldTriggerShutter([
         { t: 0, score: 0.5 },
-        { t: 500, score: 0.9 },
-        { t: 600, score: 0.9 },
-        { t: 800, score: 0.9 },
+        { t: 1400, score: 0.9 },
+        { t: 1700, score: 0.9 },
+        { t: 2000, score: 0.9 },
       ]),
     ).toBe(true);
   });
