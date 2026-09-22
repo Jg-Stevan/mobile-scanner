@@ -98,6 +98,13 @@ export const APPROX_EPSILON_RATIO = 0.02;
  *  es puro costo. NO es umbral de calidad (la decisión la toma selectQuad). */
 export const MIN_CONTOUR_AREA_PCT = 0.005;
 
+/** F1-opt P2: top-N contornos por área que llegan a approxPolyDP. Origen:
+ *  ingeniería F1-opt con expectativa calibrada — la evidencia P1 indica que el
+ *  bottleneck del Exynos NO está en el conteo (se aplica por orden aprobado y
+ *  costo cero, no por ganancia esperada). selectQuad ya miraba top-5; el cap
+ *  evita aproximar el resto. */
+export const MAX_CONTOUR_CANDIDATES = 8;
+
 function clampRect(
   x0: number,
   y0: number,
@@ -151,14 +158,21 @@ export function processFrame(
     const hierarchy = track(cv.createMat());
     cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-    // QuadDetector: top por área → approx → 4 vértices → core.
+    // QuadDetector: top-8 por área → approx → 4 vértices → core (P2: el cap
+    // va ANTES de approxPolyDP para no aproximar en vano).
     const minArea = procW * procH * MIN_CONTOUR_AREA_PCT;
-    const polys: ScoredPoly[] = [];
+    const cands: Array<{ cnt: PipelineMat; area: number }> = [];
     const n = cv.contourCount(contours);
     for (let i = 0; i < n; i++) {
       const cnt = track(cv.getContour(contours, i));
       const area = cv.contourArea(cnt);
       if (area < minArea) continue;
+      cands.push({ cnt, area });
+    }
+    cands.sort((a, b) => b.area - a.area);
+    const polys: ScoredPoly[] = [];
+    const top = cands.slice(0, MAX_CONTOUR_CANDIDATES);
+    for (const { cnt, area } of top) {
       const peri = cv.arcLength(cnt, true);
       const approx = track(cv.createMat());
       cv.approxPolyDP(cnt, approx, APPROX_EPSILON_RATIO * peri, true);

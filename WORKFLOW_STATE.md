@@ -62,14 +62,16 @@
   con origen honesto (sin cambio lógico), harness mode=camera (D3 + Torch) y
   redeploy /f1/. 119/119 tests, tsc limpio. E2E fake-cam: 817 resultados,
   error simulado sin congelar. Evidencia en `PLAN_EVIDENCE/F1-a/`.
-- **F1-b cerrada (código · 2026-09-22 · /ship doble APROBADO):** D6 implementada
-  (filtro por label + menos-palabras; D3 intacta). 124/124 tests. ⏳ Re-test
-  humano iPhone pendiente (panel debe mostrar "Cámara trasera"). Evidencia en
-  `PLAN_EVIDENCE/F1-b/`.
-- **F1-opt P1 implementada (2026-09-22 · /ship doble APROBADO, NO validada):**
-  RETR_EXTERNAL + regresión fixtures intacta (b sigue fallando igual).
-  Redeploy /f1/ con la palanca (bundle verificado). ⏳ Falta FPS humano en
-  SM-A566E (≥15 → parar; <15 → palanca 2; agotadas → D7 pre-aprobada).
+- **F1-b CERRADA (código + validación humana iPhone 2026-09-22):** D6 validada
+  empíricamente — panel muestra "Cámara trasera" (simple), 19.5/28.0 FPS,
+  latencia 18-23ms, torch ON re-verificado. Futuras mediciones iOS sobre la
+  lente correcta. Nota: iOS reporta el track transpuesto (3840×2160 en
+  portrait) — quirk de getSettings; el detector es inmune (fracciones).
+  Evidencia en `PLAN_EVIDENCE/F1-b/`.
+- **F1-opt P1: SIN EFECTO en Samsung (medición humana 2026-09-22):** 11.0
+  portrait / 13.6 landscape vs baseline 12.3/13.1 (ruido). Análisis registrado:
+  bottleneck Exynos = costo fijo por píxel + transporte, no conteo de contornos
+  (P1 solo ayudó en iPhone de fondo texturizado). P2+P3 según secuencia aprobada.
   Evidencia en `PLAN_EVIDENCE/F1-opt/`.
 - **T6 cerrada (2026-09-22 · /ship doble APROBADO):** cierre del spike
   (D5/D6, takePhoto-iOS sin boost, decisiones 1-3, matriz congelada) + push de

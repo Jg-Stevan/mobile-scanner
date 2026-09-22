@@ -11,7 +11,7 @@ import type {
   PipelineRect,
   PipelineSize,
 } from '../src/workers/pipeline';
-import { APPROX_EPSILON_RATIO, CANNY_HIGH, CANNY_LOW, processFrame } from '../src/workers/pipeline';
+import { APPROX_EPSILON_RATIO, CANNY_HIGH, CANNY_LOW, MAX_CONTOUR_CANDIDATES, processFrame } from '../src/workers/pipeline';
 
 class MockMat implements PipelineMat {
   deleted = false;
@@ -184,6 +184,14 @@ describe('processFrame (detector F1)', () => {
     const cv = new MockCv();
     processFrame(cv, fakeImageData(), 200, 200, 0);
     expect(cv.findMode).toBe(cv.RETR_EXTERNAL);
+  });
+  it('F1-opt P2: approx solo al top-8 por área (MAX_CONTOUR_CANDIDATES)', () => {
+    expect(MAX_CONTOUR_CANDIDATES).toBe(8);
+    const cv = new MockCv();
+    cv.contours = Array.from({ length: 10 }, (_, i) => ({ ...bigSquare(), area: 8100 - i }));
+    const r = processFrame(cv, fakeImageData(), 200, 200, 0);
+    expect(cv.approxEps).toHaveLength(8);
+    expect(r.corners).not.toBeNull(); // el mayor sigue ganando
   });
   it('triángulo (3 vértices) → null + stats del frame (sin roi)', () => {
     const cv = new MockCv();

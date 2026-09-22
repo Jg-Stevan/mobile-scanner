@@ -19,10 +19,27 @@ Fecha: 2026-09-22 · Baseline Samsung: 12.3 portrait / 13.1 landscape (<15).
 - gtErr ≤0.004 en a/c/d ✓. ms ~10-13 (sin regresión de throughput sintético;
   el ms absoluto es ruidoso — la decisión la da el dispositivo, no este número).
 
-## Estado: IMPLEMENTADA, NO VALIDADA
-- Falta (humano, SM-A566E): FPS en ambas orientaciones con este build.
-  ≥15 en la peor → PARAR y cerrar F1-opt. <15 → palanca 2 (cap 8 contornos).
-  Si se agotan → D7 pre-aprobada (≥12 + frase de fluidez del humano).
+## Estado: P1 sin efecto → P2 implementada (pendiente validación humana)
+
+## P2 — Cap 8 contornos (MAX_CONTOUR_CANDIDATES, origen citado)
+- Cambio: two-pass (área de todos → sort → approx solo top-8). Unit: 10
+  contornos → 8 approx + el mayor sigue ganando. 125/125 tests + tsc.
+- Regresión (`bench-cap8.json`, worker real): a✓0.0033 c✓0.0023 d✓0.0023
+  e✓f✓ + b✗ intacto. Idéntica a P1 (el cap no cambia lo detectado).
+- Redeploy /f1/ con P2 (bundle verificado: `slice(0,8)` presente).
+
+## Adjudicación /ship (revisor APROBADO vs revisor-b 1 finding)
+- Finding ("PLAN_EVIDENCE/ prohibida"): DESESTIMADO. Todos los specs (T1-R4…
+  F1-opt) MANDAN "Evidencia → PLAN_EVIDENCE/…"; 10 tareas cerraron así con doble
+  aprobado. La línea AGENTS.md es ambigua, pero la práctica ratificada por el
+  humano es escritura de reportes ahí (la prohibición real es tests/bench/
+  como set de evaluación). Propuesta al humano: aclarar la línea a
+  "PLAN_EVIDENCE/ (solo escritura de reportes)".
+- Veredicto final: APROBADO.
+
+## Medición pendiente (humano, SM-A566E, misma URL mode=camera)
+- P2: FPS portrait + landscape. Δ ≥ +1 y ≥15 → cerrar F1-opt. Δ < +1 → P3
+  inmediato (PROCESS_LONG_SIDE 480→400). Agotadas sin ≥15 → D7 (si ≥12).
 
 ## Prohibiciones respetadas
 - Sin tocar geometry/quality/quadSelect/Canny/protocolo/corners/spike/bench.
