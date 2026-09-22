@@ -1,26 +1,18 @@
-# current_plan.md — [DELEGATE] Generar HTML del spike F0
+# current_plan.md — Sonda modelos-v2 (tarea trivial)
 
-**Estado:** IN PROGRESS (generación) → PENDIENTE ejecución humana
+**Estado:** IN PROGRESS
 
-## Tarea (del plan de adaptación T3.3)
-Generar el HTML del spike F0 según PLAN_MAESTRO §5-F0 y la skill `spike-dispositivos`:
-un solo archivo autocontenido, abrible directo, con panel de diagnóstico en pantalla.
+## Objetivo
+Crear el archivo `PLAN_EVIDENCE/sonda-modelos-v2.txt` con el contenido exacto `sonda-v2-ok` siguiendo el pipeline de agentes v2.
 
-## Requisitos del entregable (T3.4/T3.5)
-- a) Archivo único `spike.html`, sin build requerido.
-- b) Veredictos A+B (revisión doble) sobre el diff.
-- c) Este plan en current_plan.md.
-- d) WORKFLOW_STATE.md actualizado ("F0 spike: instrumento generado, pendiente ejecución humana").
-- T3.5) NO hardcodear valores que el spike debe medir (resoluciones de track, DPI); medir en runtime.
+## Pipeline de Agentes
+1. **Exploración:** `@explorador-v2` explorará el espacio de trabajo para verificar la existencia de la carpeta `PLAN_EVIDENCE` y confirmar que no haya conflictos.
+2. **Implementación:** `@implementador-v2` creará el archivo `PLAN_EVIDENCE/sonda-modelos-v2.txt` con el contenido exacto `sonda-v2-ok`.
+3. **Revisión Doble:**
+   - `@revisor-v2` (Revisor A) revisará la creación del archivo y emitirá su veredicto.
+   - `@revisor-b-v2` (Revisor B) revisará la creación del archivo de forma independiente y emitirá su veredicto.
 
-## Contenido requerido del instrumento
-1. `enumerateDevices()` → listar cámaras, elegir la principal trasera explícita.
-2. `<video playsinline muted>` + bucle rVFC con fallback rAF.
-3. Panel de diagnóstico: `getSettings()` (W×H real, framerate, aspect), `getCapabilities()` (torch, focusMode, zoom…), log CameraProfile.
-4. Test rutas A/B/C: takePhoto (resolución, latencia, fallos), drawImage track (B), input capture (C, ¿1 o varias fotos por gesto?).
-5. EXIF Safari: `createImageBitmap(blob, {imageOrientation:'from-image'})`.
-6. DPI runtime: quad manual sobre A4 + `anchoQuadPx / 8.27`.
-7. Checklist del spike editable + exportación de reporte.
-
-## Alcance del agente
-Genera el instrumento. La ejecución y el llenado de resultados son humanos (F0 días 1-2).
+## Verificación
+- Confirmar la existencia del archivo `PLAN_EVIDENCE/sonda-modelos-v2.txt`.
+- Confirmar que el contenido sea exactamente `sonda-v2-ok`.
+- Reportar los agentes que intervinieron y sus veredictos.

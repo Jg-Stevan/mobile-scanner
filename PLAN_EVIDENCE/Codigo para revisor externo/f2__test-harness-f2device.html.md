@@ -1,0 +1,40 @@
+# test-harness-f2device.html
+
+Origen: `f2/test-harness-f2device.html` (commit F2-device 0759dd4)
+
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F2 — auto-shutter en dispositivo</title>
+<style>body{color:#ddd;background:#111;margin:0;padding:12px;font:14px system-ui}.vwrap{width:100%;max-width:640px;position:relative}video{background:#000;width:100%;display:block}canvas.overlay{width:100%;height:100%;position:absolute;inset:0}#ring{width:84px;height:84px}.row{align-items:center;gap:8px;margin:8px 0;display:flex}button{font:inherit;margin:4px 4px 4px 0;padding:10px 14px}#shutterBtn{font-size:17px}#toast{color:#eab308;min-height:20px;font-weight:700}#thumb{border:1px solid #444;max-width:320px}.metrics{grid-template-columns:1fr 1fr;gap:4px;margin:8px 0;display:grid}.metrics div{background:#222;border-radius:6px;padding:6px 8px}.metrics b{color:#4c4}pre{background:#000;max-height:160px;padding:8px;overflow:auto}</style>
+  <script type="module" crossorigin src="./assets/test-harness-f2device-8UaVVOLi.js"></script>
+</head>
+<body>
+<h1>F2 — auto-shutter (harness temporal de dispositivo)</h1>
+<div class="vwrap">
+  <video id="v" playsinline muted autoplay></video>
+  <canvas id="ov" class="overlay" width="640" height="480"></canvas>
+</div>
+<div class="row">
+  <canvas id="ring" width="84" height="84"></canvas>
+  <div>
+    <button id="shutterBtn">📷 Shutter manual</button>
+    <button id="torchBtn">Torch: ?</button>
+  </div>
+</div>
+<div id="toast"></div>
+<div class="metrics">
+  <div>Cámara: <b id="mCam">—</b></div>
+  <div>Estado: <b id="mState">—</b></div>
+  <div>FPS: <b id="mFps">—</b></div>
+  <div>Capturas: <b id="mCap">0</b></div>
+</div>
+<div>Última ganadora (score <span id="mScore">—</span>):<br><canvas id="thumb" width="320" height="240"></canvas></div>
+<pre id="out">…</pre>
+</body>
+</html>
+
+```

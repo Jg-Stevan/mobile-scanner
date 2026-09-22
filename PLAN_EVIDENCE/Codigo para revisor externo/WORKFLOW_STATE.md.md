@@ -1,3 +1,7 @@
+> Revisión externa · origen: `WORKFLOW_STATE.md` (commit F2-device 0759dd4)
+
+---
+
 # WORKFLOW_STATE — mobile-scanner
 
 Última actualización: 2026-09-21
@@ -99,7 +103,6 @@
   `ideal` de entrada — el spec T5 exige 3840). ⏳ Falta validación humana en
   SM-A566E (ver arriba). Evidencia en `PLAN_EVIDENCE/T5-camera/`.
 ## Tareas en Progreso
-- **Sonda modelos-v2 (2026-09-22):** Creación de PLAN_EVIDENCE/sonda-modelos-v2.txt con contenido sonda-v2-ok usando el pipeline v2.
 - _F1-humano COMPLETADA (2026-09-22): SM 12.3/13.1 FPS + D3 camera 0 (cierra
   T5-humano) · iPhone 16.2/17.9 + torch ON (cierra T6) · D2 OK ambos · hallazgo
   D6 → F1-b (CERRADA y validada)._
@@ -161,12 +164,6 @@
   visual CONFIRMADA por el humano ("va bastante fluido, va bien"). Números
   finales SM-A566E: 14.0 portrait / 14.4 landscape · p95 58ms. iPhone: 19.5/28.0
   (cumplía ≥15 sin D7).
-- **Hallazgo "documento denso" (registrado · F2-a · test humano SM-A566E, acta
-  electoral):** texto densísimo + papel llenando el frame → FPS 3.1 (racha
-  300ms imposible), falso "Muy oscuro" (sampler medía frame con mesa oscura),
-  ecc ~0.69 (comportamiento correcto). Fixes: sampler sobre crop del quad +
-  diag contourCount (dato para palanca FPS). Insumo F4/F6 (tolerancia contacto
-  y densidad). P4 (300px) pendiente de OK humano explícito.
 
 ## Matriz de Dispositivos (congelada 2026-09-21 · T6, evidencia del spike)
 | Ruta | Android SM-A566E | iPhone 17 Pro |
