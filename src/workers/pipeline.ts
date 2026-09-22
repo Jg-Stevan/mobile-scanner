@@ -89,9 +89,11 @@ export const CANNY_HIGH = 150;
 /** Epsilon de approxPolyDP como fracción del perímetro (spec F1). */
 export const APPROX_EPSILON_RATIO = 0.02;
 
-/** Prefiltro de rendimiento: contornos bajo el 0.5% del área de proceso ni se
- *  aproximan (NO es umbral de calidad — validateQuad del core decide). */
-export const MIN_CONTOUR_AREA_RATIO = 0.005;
+/** Prefiltro de rendimiento (F1-a): contornos bajo el 0.5% del área de proceso
+ *  ni se aproximan. Origen HONESTO: ingeniería, no benchmark — ningún contorno
+ *  bajo 0.5% podría pasar el validateQuad del core (≥25%), así que aproximarlo
+ *  es puro costo. NO es umbral de calidad (la decisión la toma selectQuad). */
+export const MIN_CONTOUR_AREA_PCT = 0.005;
 
 function clampRect(
   x0: number,
@@ -147,7 +149,7 @@ export function processFrame(
     cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
     // QuadDetector: top por área → approx → 4 vértices → core.
-    const minArea = procW * procH * MIN_CONTOUR_AREA_RATIO;
+    const minArea = procW * procH * MIN_CONTOUR_AREA_PCT;
     const polys: ScoredPoly[] = [];
     const n = cv.contourCount(contours);
     for (let i = 0; i < n; i++) {

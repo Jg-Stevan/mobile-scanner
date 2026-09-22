@@ -56,6 +56,12 @@
   gtErr 0.0024; estrés 10 min heap −15.8% (DoD T4 pagado). ⏳ Falta validación
   humana en SM-A566E + iPhone (ver Tareas en Progreso). Evidencia en
   `PLAN_EVIDENCE/F1/`.
+- **F1-a cerrada (2026-09-22 · /ship doble APROBADO):** correctiva de auditoría —
+  fix error→freeze en frameLoop (busy se resetea en 'error'), contador
+  captureErrors, unlock de etiquetas en init (origen fresco), MIN_CONTOUR_AREA_PCT
+  con origen honesto (sin cambio lógico), harness mode=camera (D3 + Torch) y
+  redeploy /f1/. 119/119 tests, tsc limpio. E2E fake-cam: 817 resultados,
+  error simulado sin congelar. Evidencia en `PLAN_EVIDENCE/F1-a/`.
 - **T6 cerrada (2026-09-22 · /ship doble APROBADO):** cierre del spike
   (D5/D6, takePhoto-iOS sin boost, decisiones 1-3, matriz congelada) + push de
   6 commits y redeploy Pages verificado (marcadores T1-R4 en servido + raw

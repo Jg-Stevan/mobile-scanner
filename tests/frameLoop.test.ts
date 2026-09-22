@@ -85,14 +85,14 @@ describe('frameLoop backpressure', () => {
     const t = setup();
     await t.fire(0);
     expect(t.posted).toHaveLength(1);
-    expect(t.handle.stats()).toEqual({ sent: 1, dropped: 0 });
+    expect(t.handle.stats()).toEqual({ sent: 1, dropped: 0, captureErrors: 0 });
     await t.fire(1); // worker aún ocupado → descarte
     expect(t.posted).toHaveLength(1);
-    expect(t.handle.stats()).toEqual({ sent: 1, dropped: 1 });
+    expect(t.handle.stats()).toEqual({ sent: 1, dropped: 1, captureErrors: 0 });
     t.deliver(RESULT);
     await t.fire(2);
     expect(t.posted).toHaveLength(2);
-    expect(t.handle.stats()).toEqual({ sent: 2, dropped: 1 });
+    expect(t.handle.stats()).toEqual({ sent: 2, dropped: 1, captureErrors: 0 });
     expect(t.results).toHaveLength(1);
     expect(t.results[0]!.q.laplacianVar).toBe(144);
   });
@@ -126,7 +126,7 @@ describe('frameLoop backpressure', () => {
     expect(t.posted).toHaveLength(0);
     await t.fire(1); // se envía sin descarte
     expect(t.posted).toHaveLength(1);
-    expect(t.handle.stats()).toEqual({ sent: 1, dropped: 0 });
+    expect(t.handle.stats()).toEqual({ sent: 1, dropped: 0, captureErrors: 0 });
   });
   it("boot/ready/error van a onStatus, no a onResult", async () => {
     const t = setup();
@@ -134,6 +134,36 @@ describe('frameLoop backpressure', () => {
     t.deliver({ type: 'ready' });
     expect(t.statuses).toEqual([{ type: 'boot', pct: 5 }, { type: 'ready' }]);
     expect(t.results).toHaveLength(0);
+  });
+  it("F1-a: 'error' del worker libera el flag (no hay descarte permanente)", async () => {
+    const t = setup();
+    await t.fire(0);
+    expect(t.posted).toHaveLength(1);
+    expect(t.handle.stats()).toEqual({ sent: 1, dropped: 0, captureErrors: 0 });
+    // El worker falla el frame en vuelo (p. ej. OOM de cv en móvil)
+    t.deliver({ type: 'error', message: 'boom' });
+    expect(t.statuses).toEqual([{ type: 'error', message: 'boom' }]);
+    await t.fire(1);
+    // Sin el fix: posted seguiría en 1 y dropped en 1 (congelado para siempre)
+    expect(t.posted).toHaveLength(2);
+    expect(t.handle.stats()).toEqual({ sent: 2, dropped: 0, captureErrors: 0 });
+    t.deliver(RESULT);
+    await t.fire(2);
+    expect(t.posted).toHaveLength(3);
+  });
+  it('captureErrors cuenta racha de fallos y se resetea al enviar', async () => {
+    let fail = true;
+    const t = setup(() => {
+      if (fail) return Promise.reject(new Error('x'));
+      const b: FakeBitmap = { closed: false, close: () => { b.closed = true; } };
+      return Promise.resolve(b);
+    });
+    await t.fire(0);
+    await t.fire(1);
+    expect(t.handle.stats()).toEqual({ sent: 0, dropped: 0, captureErrors: 2 });
+    fail = false;
+    await t.fire(2);
+    expect(t.handle.stats()).toEqual({ sent: 1, dropped: 0, captureErrors: 0 });
   });
   it('stop cancela el loop y termina el worker', async () => {
     const t = setup();
@@ -292,3 +322,4 @@ describe('frameLoop defaults (rVFC/rAF + createImageBitmap reales por globals)',
     expect(handle.stats().sent).toBe(0);
   });
 });
+

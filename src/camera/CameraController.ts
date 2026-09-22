@@ -121,6 +121,15 @@ export class CameraController {
   }
 
   async init(opts: ControllerInit = {}): Promise<CameraProfile> {
+    // Desbloqueo de etiquetas (F1-a): en origen fresco los labels/deviceIds
+    // vienen vacíos hasta conceder permiso — se pide un stream genérico y se
+    // cierra (patrón del spike). Sin cámara, enumerate lo confirma abajo.
+    try {
+      const unlock = await this.deps.getUserMedia({ video: true });
+      for (const t of unlock.getTracks()) t.stop();
+    } catch {
+      // Sigue a enumerate: dictamina si hay cámaras o no.
+    }
     const devices = await this.deps.enumerateDevices();
     const videos = devices.filter((d) => d.kind === 'videoinput');
     const probes: CameraProbe[] = [];

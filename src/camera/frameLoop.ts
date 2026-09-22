@@ -31,6 +31,8 @@ export interface FrameLoopOptions {
 export interface FrameLoopStats {
   sent: number;
   dropped: number;
+  /** Fallos consecutivos de capture() (hallazgo 7 auditoría F1; 0 = racha limpia). */
+  captureErrors: number;
 }
 
 export interface FrameLoopHandle {
@@ -69,6 +71,7 @@ export function startFrameLoop(opts: FrameLoopOptions): FrameLoopHandle {
   let workerBusy = false;
   let sent = 0;
   let dropped = 0;
+  let captureErrors = 0;
 
   const schedule = (): void => {
     if (stopped) return;
@@ -96,11 +99,13 @@ export function startFrameLoop(opts: FrameLoopOptions): FrameLoopHandle {
           return;
         }
         sent++;
+        captureErrors = 0; // racha limpia: el worker volvió a recibir
         opts.worker.postMessage({ type: 'detect', bitmap, ts: deps.now() }, [bitmap]);
       })
       .catch(() => {
         // Captura fallida (video detenido a mitad): liberar el flag.
         workerBusy = false;
+        captureErrors++;
       });
   };
 
@@ -111,6 +116,12 @@ export function startFrameLoop(opts: FrameLoopOptions): FrameLoopHandle {
       opts.onResult?.(msg.qualityInput, msg.ts, msg.corners);
     } else if (msg.type === 'busy') {
       // El worker sigue con el frame en vuelo: se espera su 'result'.
+    } else if (msg.type === 'error') {
+      // F1-a (auditoría): un error NO puede congelar el loop — el frame en
+      // vuelo se perdió, pero el siguiente debe enviarse (el worker ya liberó
+      // su propio flag en finally). El error viaja por onStatus para log/UI.
+      workerBusy = false;
+      opts.onStatus?.(msg);
     } else {
       opts.onStatus?.(msg);
     }
@@ -124,6 +135,6 @@ export function startFrameLoop(opts: FrameLoopOptions): FrameLoopHandle {
       deps.cancelFrame(handle);
       opts.worker.terminate();
     },
-    stats: () => ({ sent, dropped }),
+    stats: () => ({ sent, dropped, captureErrors }),
   };
 }

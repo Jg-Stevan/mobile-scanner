@@ -47,7 +47,10 @@ export interface DetectRequest {
 }
 
 /** Entrada cruda de calidad que el worker devuelve por frame (F1: valores
- *  CRUDOS — el QualityScorer del core los consume en F2, no se cablea aquí). */
+ *  CRUDOS — el QualityScorer del core los consume en F2, no se cablea aquí).
+ *  NOTA F1-a (hallazgo 5 auditoría): en streams portrait con PRESERVE el crop
+ *  sale a ~270×480, no 480p exactos — consistente entre frames, pero los
+ *  umbrales (BLUR_THRESHOLD/SHARPNESS_NORM) se RECALIBRAN en F2 con reales. */
 export interface RawQualityInput {
   /** Varianza del Laplaciano sobre el CROP del quad (contrato 480p de
    *  quality.ts); frame completo si no hay quad. null si no medible. */

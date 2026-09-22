@@ -95,6 +95,33 @@ describe('hasRealAutofocus / chooseMainCamera (D3)', () => {
 });
 
 describe('CameraController.init', () => {
+  it('desbloquea etiquetas con stream genérico antes de enumerar (origen fresco)', async () => {
+    const stopped: unknown[] = [];
+    const track = trackStub(
+      { deviceId: 'main-0', width: 2160, height: 3840 },
+      { torch: true, focusMode: ['continuous', 'manual'], zoom: { max: 8 } },
+    );
+    const { deps, seen } = setup({ 'main-0': MAIN, 'ultra-2': ULTRA }, async () =>
+      streamOf(track),
+    );
+    const unlocking: MediaDeps = {
+      ...deps,
+      getUserMedia: (async (c: unknown) => {
+        seen.push(c);
+        if (seen.length === 1) {
+          return { getTracks: () => [{ stop: () => stopped.push(1) }] } as unknown as MediaStream;
+        }
+        return streamOf(track);
+      }) as MediaDeps['getUserMedia'],
+    };
+    const ctl = new CameraController(unlocking);
+    await ctl.init();
+    expect(seen[0]).toEqual({ video: true });
+    expect(stopped).toHaveLength(1);
+    expect(seen[1]).toEqual({
+      video: { deviceId: { exact: 'main-0' }, width: { ideal: IDEAL_CAPTURE_WIDTH } },
+    });
+  });
   it('D3 en init: abre la principal (no la ultra-wide) con presupuesto 3840 sin ratio', async () => {
     const track = trackStub(
       { deviceId: 'main-0', width: 2160, height: 3840 },
@@ -105,7 +132,8 @@ describe('CameraController.init', () => {
     );
     const ctl = new CameraController(deps);
     const profile = await ctl.init();
-    expect(seen[0]).toEqual({
+    expect(seen[0]).toEqual({ video: true }); // desbloqueo de etiquetas
+    expect(seen[1]).toEqual({
       video: { deviceId: { exact: 'main-0' }, width: { ideal: IDEAL_CAPTURE_WIDTH } },
     });
     expect(IDEAL_CAPTURE_WIDTH).toBe(3840);
@@ -124,12 +152,12 @@ describe('CameraController.init', () => {
     let calls = 0;
     const { deps } = setup({ 'main-0': MAIN }, async () => {
       calls++;
-      if (calls <= 2) throw new DOMException('over', 'OverconstrainedError');
+      if (calls === 2 || calls === 3) throw new DOMException('over', 'OverconstrainedError');
       return streamOf(track);
     });
     const ctl = new CameraController(deps);
     await ctl.init();
-    expect(calls).toBe(3);
+    expect(calls).toBe(4); // 1 unlock + 3 niveles de cascada
     expect(ctl.warnings.join(' ')).toMatch(/fallback nivel 2/);
   });
   it('sin videoinput → throw', async () => {
@@ -276,7 +304,8 @@ describe('ramas de error + defaults de navegador', () => {
     });
     const ctl = CameraController.browser();
     const p = await ctl.init();
-    expect(opened[0]).toEqual({ video: { deviceId: { exact: 'c0' } } });
+    expect(opened[0]).toEqual({ video: true }); // desbloqueo
+    expect(opened[1]).toEqual({ video: { deviceId: { exact: 'c0' } } });
     expect(probeTrack.stop).toHaveBeenCalled();
     expect(p.capabilities.focusModes).toEqual(['continuous']);
     expect(p.deviceId).toBe('c0');
