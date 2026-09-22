@@ -145,3 +145,8 @@ Decisiones cerradas con estos datos: (1) auto-shutter iOS con track 4K viable
 foto/gesto en ambas plataformas; (3) matriz final arriba. Ambos dispositivos
 convergen a ~309 DPI tras el cap de 3500px: el cap normaliza la salida
 independiente del sensor.
+- **Limitación documentada F1 (registrada · revisión externa F1 · fixture b):**
+  papel sobre fondo CLARO (bajo contraste) NO se detecta en ninguna config
+  (SQUASH/PRESERVE × Canny 50/150/75/200). Es el caso blanco-sobre-blanco del
+  plan (riesgo registrado): escape = botón manual SIEMPRE visible (F2), solución
+  definitiva = F6.5 condicional. No se "arregla" con trampa de umbrales.
