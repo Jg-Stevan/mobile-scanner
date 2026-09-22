@@ -4,10 +4,34 @@
 // Vive en workers/ (no en core/) para no tocar la lógica aprobada de T2/T3.
 // Corners en FRACCIONES (0–1) del frame, orden TL,TR,BR,BL — como el spike.
 
-/** Resolución de proceso: el downscale a 480p ocurre en el ENVÍO (frameLoop
- *  vía createImageBitmap); el worker siempre recibe 480p listo. */
+/** Resolución de proceso SQUASH (T4): fallback cuando se desconoce el aspecto
+ *  del video o resizeMode='squash'. */
 export const PROCESS_WIDTH = 640;
 export const PROCESS_HEIGHT = 480;
+
+/** Lado mayor de proceso en modo PRESERVE (F1 Fase 0: gana por empate en
+ *  detección + ~35% menos píxeles + ~10ms vs segundos en ruido).
+ *  9:16 → 270×480. Evidencia: PLAN_EVIDENCE/F1/bench-fase0.json. */
+export const PROCESS_LONG_SIDE = 480;
+
+export type ResizeMode = 'squash' | 'preserve';
+
+/** Dims de proceso: preserve escala el lado mayor a 480 manteniendo aspecto;
+ *  squash usa el fallback 640×480 (también si las dims del video son inválidas). */
+export function computeProcessDims(
+  videoW: number,
+  videoH: number,
+  mode: ResizeMode,
+): { w: number; h: number } {
+  if (mode !== 'preserve' || !(videoW > 0) || !(videoH > 0)) {
+    return { w: PROCESS_WIDTH, h: PROCESS_HEIGHT };
+  }
+  const s = PROCESS_LONG_SIDE / Math.max(videoW, videoH);
+  return {
+    w: Math.max(1, Math.round(videoW * s)),
+    h: Math.max(1, Math.round(videoH * s)),
+  };
+}
 
 /** URL pineada del build oficial de OpenCV.js que carga el worker (T4).
  *  4.5.5: última con ruta estable verificada (4.10.0 devuelve 404 en ese path). */
@@ -22,12 +46,16 @@ export interface DetectRequest {
   ts: number;
 }
 
-/** Entrada cruda de calidad que el worker devuelve por frame (T4: valores
+/** Entrada cruda de calidad que el worker devuelve por frame (F1: valores
  *  CRUDOS — el QualityScorer del core los consume en F2, no se cablea aquí). */
 export interface RawQualityInput {
-  /** Varianza del Laplaciano sobre el frame 480p (stub: frame completo, sin
-   *  crop — no hay quad hasta F1). null si no se pudo medir. */
+  /** Varianza del Laplaciano sobre el CROP del quad (contrato 480p de
+   *  quality.ts); frame completo si no hay quad. null si no medible. */
   laplacianVar: number | null;
+  /** Media del crop en gris (null si no medible). */
+  cropMean: number | null;
+  /** Desviación del crop en gris (null si no medible). */
+  cropStdDev: number | null;
   frameW: number;
   frameH: number;
 }

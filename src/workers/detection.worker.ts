@@ -44,10 +44,14 @@ function adaptCv(cv: {
   Mat: new () => never;
   MatVector: new () => never;
   Size: new (w: number, h: number) => never;
+  Rect: new (x: number, y: number, w: number, h: number) => never;
   cvtColor(...a: never[]): void;
   GaussianBlur(...a: never[]): void;
   Canny(...a: never[]): void;
   findContours(...a: never[]): void;
+  contourArea(...a: never[]): number;
+  arcLength(...a: never[]): number;
+  approxPolyDP(...a: never[]): void;
   Laplacian(...a: never[]): void;
   meanStdDev(...a: never[]): void;
 }): CvApi {
@@ -66,8 +70,21 @@ function adaptCv(cv: {
     Canny: (s, d, t1, t2) => cv.Canny(s as never, d as never, t1 as never, t2 as never),
     findContours: (img, c, h, m1, m2) =>
       cv.findContours(img as never, c as never, h as never, m1 as never, m2 as never),
+    contourCount: (v) => (v as unknown as { size(): number }).size(),
+    getContour: (v, i) =>
+      (v as unknown as { get(idx: number): unknown }).get(i) as ReturnType<
+        CvApi['getContour']
+      >,
+    contourArea: (m) => cv.contourArea(m as never),
+    arcLength: (m, closed) => cv.arcLength(m as never, closed as never),
+    approxPolyDP: (s, d, eps, closed) =>
+      cv.approxPolyDP(s as never, d as never, eps as never, closed as never),
     Laplacian: (s, d, depth) => cv.Laplacian(s as never, d as never, depth as never),
     meanStdDev: (s, m, v) => cv.meanStdDev(s as never, m as never, v as never),
+    roi: (m, r) =>
+      (m as unknown as { roi(rect: unknown): unknown }).roi(
+        new cv.Rect(r.x, r.y, r.width, r.height),
+      ) as ReturnType<CvApi['roi']>,
   };
 }
 

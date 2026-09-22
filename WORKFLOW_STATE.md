@@ -49,6 +49,13 @@
   revisor-b con 2 findings desestimados por orquestador (640×480 es mandato del
   spec, no hardcode; e2e-60s.json sí existe). Evidencia en
   `PLAN_EVIDENCE/T4-worker/`.
+- **F1 cerrada (código · 2026-09-22 · /ship doble APROBADO):** QuadDetector real
+  (approxPolyDP→selectQuad del core, fracciones del original, stats del crop) +
+  decisión Fase 0 PRESERVE + Canny 50/150 (benchmark 6 fixtures) + overlay con
+  D2. 116/116 tests, cobertura ≥95%, tsc limpio. Vivo 14.6 FPS / p95 90.8ms /
+  gtErr 0.0024; estrés 10 min heap −15.8% (DoD T4 pagado). ⏳ Falta validación
+  humana en SM-A566E + iPhone (ver Tareas en Progreso). Evidencia en
+  `PLAN_EVIDENCE/F1/`.
 - **T6 cerrada (2026-09-22 · /ship doble APROBADO):** cierre del spike
   (D5/D6, takePhoto-iOS sin boost, decisiones 1-3, matriz congelada) + push de
   6 commits y redeploy Pages verificado (marcadores T1-R4 en servido + raw
@@ -65,6 +72,8 @@
 - _F0 spike humano: ejecución COMPLETADA en Android + iPhone (T6) — queda solo el
   pendiente menor del toggle torch real en iOS._
 - _T5-humano SM-A566E pendiente (selección camera 0, profile, ruta A) — ver abajo._
+- _F1-humano pendiente: SM-A566E (carta sobre mesa oscura → polígono verde, ≥15
+  FPS, <100ms, screenshot) + iPhone 17 Pro (misma prueba). Código F1 cerrado._
 
 ## Backlog F1 (notas registradas 2026-09-21, revisión externa T4 — no bloquean T4)
 - Benchmark de detección real en 2 condiciones (matiz del finding 1 de revisor-b,

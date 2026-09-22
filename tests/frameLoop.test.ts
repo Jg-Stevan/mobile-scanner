@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { FrameLoopDeps } from '../src/camera/frameLoop';
 import { startFrameLoop } from '../src/camera/frameLoop';
 import type { RawQualityInput, WorkerOut } from '../src/workers/protocol';
+import { computeProcessDims } from '../src/workers/protocol';
 
 interface FakeBitmap {
   closed: boolean;
@@ -75,7 +76,7 @@ function setup(captureImpl?: () => Promise<FakeBitmap>) {
 const RESULT: WorkerOut = {
   type: 'result',
   corners: null,
-  qualityInput: { laplacianVar: 144, frameW: 640, frameH: 480 },
+  qualityInput: { laplacianVar: 144, cropMean: 128, cropStdDev: 12, frameW: 640, frameH: 480 },
   ts: 1000,
 };
 
@@ -143,6 +144,50 @@ describe('frameLoop backpressure', () => {
   });
 });
 
+describe('computeProcessDims (F1 Fase 0: preserve por defecto)', () => {
+  it('9:16 portrait → 270×480 (lado mayor 480)', () => {
+    expect(computeProcessDims(1080, 1920, 'preserve')).toEqual({ w: 270, h: 480 });
+  });
+  it('4:3 landscape → 480×360', () => {
+    expect(computeProcessDims(640, 480, 'preserve')).toEqual({ w: 480, h: 360 });
+  });
+  it('squash o dims inválidas → fallback 640×480', () => {
+    expect(computeProcessDims(1080, 1920, 'squash')).toEqual({ w: 640, h: 480 });
+    expect(computeProcessDims(0, 0, 'preserve')).toEqual({ w: 640, h: 480 });
+    expect(computeProcessDims(NaN, 480, 'preserve')).toEqual({ w: 640, h: 480 });
+  });
+  it('el loop usa preserve con las dims reales del video', async () => {
+    const seen: unknown[] = [];
+    const video = { videoWidth: 1080, videoHeight: 1920 } as HTMLVideoElement;
+    const w = {
+      postMessage: vi.fn(),
+      terminate: vi.fn(),
+      onmessage: null,
+    } as unknown as Worker;
+    const queued: Array<() => void> = [];
+    const handle = startFrameLoop({
+      video,
+      worker: w,
+      deps: {
+        requestFrame: (cb) => {
+          queued.push(cb);
+          return 1;
+        },
+        cancelFrame: () => {},
+        capture: (async (_v: unknown, cw: number, ch: number) => {
+          seen.push([cw, ch]);
+          return { close: () => {} };
+        }) as FrameLoopDeps['capture'],
+        now: () => 0,
+      },
+    });
+    queued[0]!();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(seen).toEqual([[270, 480]]);
+    handle.stop();
+  });
+});
+
 describe('frameLoop defaults (rVFC/rAF + createImageBitmap reales por globals)', () => {
   function fakeWorker() {
     const posted: unknown[] = [];
@@ -205,7 +250,7 @@ describe('frameLoop defaults (rVFC/rAF + createImageBitmap reales por globals)',
     );
     const video = {} as HTMLVideoElement;
     const w = fakeWorker();
-    const handle = startFrameLoop({ video, worker: w.worker, width: 640, height: 480 });
+    const handle = startFrameLoop({ video, worker: w.worker });
     rafCbs[0]!();
     await new Promise((r) => setTimeout(r, 0));
     expect(seenArgs[0]).toEqual([

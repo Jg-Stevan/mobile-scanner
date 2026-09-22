@@ -4,8 +4,8 @@
 // si el worker está libre — flag local por mensajes result/busy, SIN cola.
 // El descarte por flag + el 'busy' del worker son las dos capas de backpressure.
 
-import type { RawQualityInput, WorkerOut } from '../workers/protocol';
-import { PROCESS_HEIGHT, PROCESS_WIDTH } from '../workers/protocol';
+import type { RawQualityInput, ResizeMode, WorkerOut } from '../workers/protocol';
+import { computeProcessDims } from '../workers/protocol';
 
 export interface FrameLoopDeps {
   /** Agenda el próximo frame; devuelve handle cancelable. Default: rVFC o rAF. */
@@ -19,9 +19,10 @@ export interface FrameLoopDeps {
 export interface FrameLoopOptions {
   video: HTMLVideoElement;
   worker: Worker;
-  width?: number;
-  height?: number;
-  onResult?: (q: RawQualityInput, ts: number) => void;
+  /** Modo de resize del envío (F1: 'preserve' por defecto — decisión Fase 0). */
+  resizeMode?: ResizeMode;
+  /** F1: corners en fracciones (o null) como 3er parámetro (aditivo). */
+  onResult?: (q: RawQualityInput, ts: number, corners: Float32Array | null) => void;
   onStatus?: (msg: WorkerOut) => void;
   /** Inyección para tests (por defecto usa rVFC/rAF + createImageBitmap). */
   deps?: Partial<FrameLoopDeps>;
@@ -38,8 +39,7 @@ export interface FrameLoopHandle {
 }
 
 export function startFrameLoop(opts: FrameLoopOptions): FrameLoopHandle {
-  const width = opts.width ?? PROCESS_WIDTH;
-  const height = opts.height ?? PROCESS_HEIGHT;
+  const mode: ResizeMode = opts.resizeMode ?? 'preserve';
   const deps: FrameLoopDeps = {
     requestFrame: (cb) => {
       if (typeof opts.video.requestVideoFrameCallback === 'function') {
@@ -83,8 +83,13 @@ export function startFrameLoop(opts: FrameLoopOptions): FrameLoopHandle {
       return;
     }
     workerBusy = true;
+    const dims = computeProcessDims(
+      opts.video.videoWidth,
+      opts.video.videoHeight,
+      mode,
+    );
     deps
-      .capture(opts.video, width, height)
+      .capture(opts.video, dims.w, dims.h)
       .then((bitmap) => {
         if (stopped) {
           bitmap.close();
@@ -103,7 +108,7 @@ export function startFrameLoop(opts: FrameLoopOptions): FrameLoopHandle {
     const msg = ev.data;
     if (msg.type === 'result') {
       workerBusy = false;
-      opts.onResult?.(msg.qualityInput, msg.ts);
+      opts.onResult?.(msg.qualityInput, msg.ts, msg.corners);
     } else if (msg.type === 'busy') {
       // El worker sigue con el frame en vuelo: se espera su 'result'.
     } else {

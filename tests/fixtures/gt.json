@@ -1,0 +1,121 @@
+{
+  "w": 360,
+  "h": 640,
+  "scenes": {
+    "a": {
+      "desc": "papel sobre fondo oscuro",
+      "expect": "quad",
+      "corners": [
+        [
+          0.14713,
+          0.20262
+        ],
+        [
+          0.92301,
+          0.23314
+        ],
+        [
+          0.85287,
+          0.79738
+        ],
+        [
+          0.07699,
+          0.76686
+        ]
+      ]
+    },
+    "b": {
+      "desc": "papel sobre fondo CLARO (bajo contraste)",
+      "expect": "quad",
+      "corners": [
+        [
+          0.08533,
+          0.22902
+        ],
+        [
+          0.86204,
+          0.20613
+        ],
+        [
+          0.91467,
+          0.77098
+        ],
+        [
+          0.13796,
+          0.79387
+        ]
+      ]
+    },
+    "c": {
+      "desc": "rotado ~10°",
+      "expect": "quad",
+      "corners": [
+        [
+          0.20433,
+          0.1835
+        ],
+        [
+          0.97029,
+          0.25947
+        ],
+        [
+          0.79567,
+          0.8165
+        ],
+        [
+          0.02971,
+          0.74053
+        ]
+      ]
+    },
+    "d": {
+      "desc": "perspectiva leve (trapecio)",
+      "expect": "quad",
+      "corners": [
+        [
+          0.17222,
+          0.20313
+        ],
+        [
+          0.82778,
+          0.20313
+        ],
+        [
+          0.88889,
+          0.79688
+        ],
+        [
+          0.11111,
+          0.79688
+        ]
+      ]
+    },
+    "e": {
+      "desc": "parcialmente fuera del frame (25% fuera der.)",
+      "expect": "partial",
+      "corners": [
+        [
+          0.46223,
+          0.20973
+        ],
+        [
+          1.23953,
+          0.22499
+        ],
+        [
+          1.20444,
+          0.79027
+        ],
+        [
+          0.42713,
+          0.77501
+        ]
+      ]
+    },
+    "f": {
+      "desc": "sin papel (distractores <25% área)",
+      "expect": "null",
+      "corners": null
+    }
+  }
+}
