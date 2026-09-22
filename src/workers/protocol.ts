@@ -64,6 +64,11 @@ export interface RawQualityInput {
   cropStdDev: number | null;
   frameW: number;
   frameH: number;
+  /** Diagnóstico F2-a (ADITIVO, opcional): nº de contornos encontrados —
+    para elegir la palanca de FPS con dato (caso "documento denso"), no teoría. */
+  diag?: {
+    contourCount: number;
+  };
 }
 
 /** Worker → UI: resultado. `corners` = 8 floats (x,y × TL,TR,BR,BL) en

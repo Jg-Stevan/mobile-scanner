@@ -169,6 +169,7 @@ describe('processFrame (detector F1)', () => {
       cropStdDev: 12,
       frameW: 200,
       frameH: 200,
+      diag: { contourCount: 1 },
     });
   });
   it('usa los umbrales Canny calibrados F1 (default) y acepta override', () => {

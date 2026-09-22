@@ -126,14 +126,53 @@ export class ScanOrchestrator {
       now: () => performance.now(),
       sampleExposure: () => {
         if (video === undefined || video.videoWidth === 0) return null;
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        // F2-a Fix 1: histograma sobre el CROP del quad del stream (bbox +
+        // 5% de margen; lastCorners se actualiza antes de muestrear, así que
+        // es el quad del frame actual) — el frame completo hunde la exposición
+        // con fondos oscuros (falso "Muy oscuro" del acta densa). Sin quad →
+        // frame completo (comportamiento anterior).
+        let sx = 0;
+        let sy = 0;
+        let sw = vw;
+        let sh = vh;
+        const qc = this.lastCorners;
+        if (qc !== null && qc.length === 8) {
+          let minX = 1;
+          let minY = 1;
+          let maxX = 0;
+          let maxY = 0;
+          let ok = true;
+          for (let i = 0; i < 4; i++) {
+            const x = qc[2 * i]!;
+            const y = qc[2 * i + 1]!;
+            if (!Number.isFinite(x) || !Number.isFinite(y)) {
+              ok = false;
+              break;
+            }
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+          if (ok && maxX > minX && maxY > minY) {
+            const mx = 0.05 * vw;
+            const my = 0.05 * vh;
+            sx = Math.max(0, Math.floor(minX * vw - mx));
+            sy = Math.max(0, Math.floor(minY * vh - my));
+            sw = Math.max(1, Math.min(vw, Math.ceil(maxX * vw + mx)) - sx);
+            sh = Math.max(1, Math.min(vh, Math.ceil(maxY * vh + my)) - sy);
+          }
+        }
         const w = EXPOSURE_SAMPLE_W;
-        const h = Math.max(1, Math.round((video.videoHeight / video.videoWidth) * w));
+        const h = Math.max(1, Math.round((sh / sw) * w));
         const c = document.createElement('canvas');
         c.width = w;
         c.height = h;
         const ctx = c.getContext('2d', { willReadFrequently: true });
         if (ctx === null) return null;
-        ctx.drawImage(video, 0, 0, w, h);
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
         const d = ctx.getImageData(0, 0, w, h);
         const hist = new Array<number>(256).fill(0);
         for (let i = 0; i < d.data.length; i += 4) {
@@ -195,6 +234,7 @@ export class ScanOrchestrator {
     this.firstAttempt = this.deps.now();
     this.quadHistory = [];
     this.scoreHistory = [];
+    this.lastCorners = null; // sin quad heredado (el sampler arranca full-frame)
   }
 
   stop(): void {

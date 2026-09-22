@@ -328,5 +328,39 @@ describe('defaults de navegador (stubs DOM, vía flujos públicos)', () => {
     ctl.onWorkerResult(q, CENTERED, 0);
     expect(ctl.getState()).toBe('detecting');
   });
+
+  it('F2-a Fix1: sampler usa el crop del quad (bbox + 5%), no el frame', () => {
+    const draws: unknown[][] = [];
+    const id = { width: 160, height: 120, data: new Uint8ClampedArray(160 * 120 * 4).fill(128) };
+    vi.stubGlobal('document', {
+      createElement: vi.fn(() => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          drawImage: (...a: unknown[]) => draws.push(a),
+          getImageData: () => id,
+        }),
+      })),
+    });
+    let now = 0;
+    const video = { videoWidth: 640, videoHeight: 480 } as HTMLVideoElement;
+    const ctl = new ScanOrchestrator({ video, deps: { now: () => now }, cooldownMs: 10 });
+    ctl.start();
+    const q: RawQualityInput = {
+      laplacianVar: 500,
+      cropMean: 128,
+      cropStdDev: 20,
+      frameW: 640,
+      frameH: 480,
+    };
+    ctl.onWorkerResult(q, null, 0); // sin quad → frame completo
+    expect(draws[0]!.slice(1, 5)).toEqual([0, 0, 640, 480]);
+    now = 100;
+    ctl.onWorkerResult(q, CENTERED, 100); // con quad → crop (quad actual, sin lag)
+    // bbox .1-.9 de 640×480 + 5%: x 64..576±32 → 32..608; y 48..432±24 → 24..456
+    expect(draws[1]!.slice(1, 5)).toEqual([32, 24, 576, 432]);
+    expect(draws[1]!.slice(5, 9)).toEqual([0, 0, 160, 120]);
+    vi.unstubAllGlobals();
+  });
 });
 

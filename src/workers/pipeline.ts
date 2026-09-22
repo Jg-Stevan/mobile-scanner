@@ -220,6 +220,7 @@ export function processFrame(
       cropStdDev: Number.isFinite(sd) ? sd : null,
       frameW,
       frameH,
+      diag: { contourCount: n },
     };
     return {
       type: 'result',

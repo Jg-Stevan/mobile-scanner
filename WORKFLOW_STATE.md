@@ -160,6 +160,12 @@
   visual CONFIRMADA por el humano ("va bastante fluido, va bien"). Números
   finales SM-A566E: 14.0 portrait / 14.4 landscape · p95 58ms. iPhone: 19.5/28.0
   (cumplía ≥15 sin D7).
+- **Hallazgo "documento denso" (registrado · F2-a · test humano SM-A566E, acta
+  electoral):** texto densísimo + papel llenando el frame → FPS 3.1 (racha
+  300ms imposible), falso "Muy oscuro" (sampler medía frame con mesa oscura),
+  ecc ~0.69 (comportamiento correcto). Fixes: sampler sobre crop del quad +
+  diag contourCount (dato para palanca FPS). Insumo F4/F6 (tolerancia contacto
+  y densidad). P4 (300px) pendiente de OK humano explícito.
 
 ## Matriz de Dispositivos (congelada 2026-09-21 · T6, evidencia del spike)
 | Ruta | Android SM-A566E | iPhone 17 Pro |
