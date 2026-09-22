@@ -74,11 +74,12 @@
 - **F1-opt P2: SIN EFECTO esperado y confirmado en regresión (sintético):**
   cap 8 intacto en fixtures (mismos errores). Medición humana P2: 12.3
   portrait (Δ=0) → regla Δ<+1 disparó P3.
-- **F1-opt P3 implementada (2026-09-22 · /ship doble APROBADO, NO validada):**
-  PROCESS_LONG_SIDE 480→400 (origen citado, trade-off CornerRefiner F3).
-  Regresión ≤0.005 ✓ (c 0.0042 anotado para F3); E2E sintético 29.4 FPS desktop
-  (2×, confirma diagnóstico). Redeploy /f1/ con P3 (bundle verificado).
-  ⏳ Falta FPS humano en SM-A566E: ≥15 cierra · ≥12 D7 (+frase fluidez) · <12 STOP.
+- **F1-opt P3 VALIDADA (medición humana 2026-09-22):** SM-A566E 14.0 portrait /
+  14.4 landscape · p95 58ms (−37% vs baseline) · fluidez visual humana
+  ("va bastante fluido, va bien"). P3 fue la palanca efectiva (+14% FPS);
+  P1/P2 sin efecto (bottleneck: costo fijo por píxel — documentado).
+- **F1 COMPLETADA (2026-09-22):** código (116→125 tests, cob ≥95%, tsc) +
+  humano en 2 dispositivos + D7. Evidencia en `PLAN_EVIDENCE/F1*/`.
   Evidencia en `PLAN_EVIDENCE/F1-opt/`.
 - **T6 cerrada (2026-09-22 · /ship doble APROBADO):** cierre del spike
   (D5/D6, takePhoto-iOS sin boost, decisiones 1-3, matriz congelada) + push de
@@ -93,33 +94,28 @@
   `ideal` de entrada — el spec T5 exige 3840). ⏳ Falta validación humana en
   SM-A566E (ver arriba). Evidencia en `PLAN_EVIDENCE/T5-camera/`.
 ## Tareas en Progreso
-- _F0 spike humano: ejecución COMPLETADA en Android + iPhone (T6) — queda solo el
-  pendiente menor del toggle torch real en iOS._
-- _T5-humano SM-A566E pendiente (selección camera 0, profile, ruta A) — ver abajo._
 - _F1-humano COMPLETADA (2026-09-22 · resultados humanos registrados):_
   - _SM-A566E: quad verde en ambas orientaciones · FPS 12.3 (portrait) / 13.1
     (landscape) — NO cumple ≥15 · latencia p95 94/79ms ✓ · D2 correcta (hint ON
     en landscape, OFF en portrait) · D3 eligió camera 0 (cierra T5-humano)._
   - _iPhone 17 Pro: quad verde ambas orientaciones · FPS 16.2/17.9 ✓ · latencia
-    p95 20/19ms ✓ · D2 correcta · torch real ON verificado (cierra T6)._
+    p95 20/19ms ✓ · D2 correcta · torch real ON verificado (cierra T6 y el
+    pendiente menor de torch-iOS)._
   - _Hallazgo D6 (empírico): iPhone seleccionó "Cámara trasera con ultra gran
-    angular" (fallback D3 sin focusMode + sort por resolución) → F1-b obligatoria._
+    angular" (fallback D3 sin focusMode + sort por resolución) → F1-b obligatoria
+    (CERRADA y validada: panel "Cámara trasera", 19.5/28.0 FPS)._
+- _F1-opt P3 (2026-09-22): FPS finales SM-A566E 14.0 portrait / 14.4 landscape ·
+  p95 58ms · fluidez visual humana ("va bastante fluido, va bien") → D7 ACTIVA.
+  F1-CLOSE sella F1 como COMPLETADA._
 
-## Backlog F1 (notas registradas 2026-09-21, revisión externa T4 — no bloquean T4)
-- Benchmark de detección real en 2 condiciones (matiz del finding 1 de revisor-b,
-  ratificado como tema real por el humano): resize 640×480 con distorsión
-  anisotrópica vs resize preservando aspecto (~270×480 para 9:16). Las fracciones
-  se preservan en ambos (mapeo F1→foto correcto); decidir con datos por robustez
-  de Canny/approxPolyDP sobre geometría deformada.
-- Estrés de 10 min (heap <20% crecimiento) como DoD OBLIGATORIO de F1 (skill
-  opencv-wasm-memoria) — el de 62s de T4 no lo sustituye.
-- Evaluar temprano el build custom de OpenCV (~2-3MB solo imgproc): 4.5.5 es de
-  2021 y el boot medido es 4.4s con el build completo de 8MB.
+## Backlog F1 (notas registradas 2026-09-21 — PAGADAS en F1 salvo custom OpenCV)
+- ~~Benchmark SQUASH vs PRESERVE~~ ✓ pagado en F1 Fase 0 (decisión PRESERVE).
+- ~~Estrés de 10 min~~ ✓ pagado en F1 (heap −15.8%).
+- Build custom OpenCV (~2-3MB) pre-producción → movido a backlog F6/PWA.
 
 ## Verificaciones pendientes (TUI/humanas)
-- T5-humano (SM-A566E, pendiente): app de prueba → DEBE elegir camera 0 por D3;
-  profile ≈ (2160×3840, torch true, 3 focusModes); ruta A takePhoto OK.
-  Screenshot del log → completar PLAN_EVIDENCE/T5-camera/.
+- T5-humano ✓ CERRADO por F1-humano (camera 0 por D3 en SM-A566E).
+- Toggle torch real iOS ✓ CERRADO (verificado ON en F1-b).
 - T0.5 `opencode agent list` → 8 agentes desde mobile-scanner — **HECHO** (verificado 2026-09-20; evidencia 00 actualizada)
 - T1.4 `@explorador` cap ~3500px AGENTS.md:21 — **HECHO** (2026-09-20)
 - T2.4 skill `opencv-wasm-memoria` (withMats) con `@implementador-backend` — **HECHO** (2026-09-20)
@@ -127,8 +123,8 @@
 - T4.1 `opencode mcp list` → 4/4 desde mobile-scanner — ⏳ **última pendiente** (CLI cuelga; visual TUI)
 
 ## Decisiones de Arquitectura
-- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: F1 QuadDetector (spike
-  humano COMPLETADO Android + iPhone · T6; matriz congelada abajo en Desviaciones)
+- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F2 auto-shutter**
+  (F1 COMPLETADA código + humano en 2 dispositivos + D7; matriz congelada abajo)
 - **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
   adaptación: T4.1 `opencode mcp list` en TUI.
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;
@@ -162,6 +158,11 @@
   rápido que SM-A566E ~940ms) PERO sin boost de resolución (2160×3840 == track).
   En iOS las rutas A/B son funcionalmente equivalentes; el diseño T5 (detección +
   fallback) ya lo maneja sin cambios de código.
+- **D7 (ACTIVADA · pre-aprobada humano 2026-09-22, efectivizada en F1-opt P3):**
+  umbral FPS detección ≥15 → **≥12 sostenido** con p95 <100ms mantenido y fluidez
+  visual CONFIRMADA por el humano ("va bastante fluido, va bien"). Números
+  finales SM-A566E: 14.0 portrait / 14.4 landscape · p95 58ms. iPhone: 19.5/28.0
+  (cumplía ≥15 sin D7).
 
 ## Matriz de Dispositivos (congelada 2026-09-21 · T6, evidencia del spike)
 | Ruta | Android SM-A566E | iPhone 17 Pro |

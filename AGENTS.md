@@ -32,7 +32,8 @@
 ## Carpetas prohibidas
 - tests/bench/ (set congelado de evaluación — jamás usar para ajustar
   el detector; evita fuga de evaluación)
-- PLAN_EVIDENCE/, .opencode/, node_modules/, .git/
+- PLAN_EVIDENCE/ = SOLO escritura de reportes de evidencia (aclaración aceptada
+  por humano 2026-09-22); .opencode/, node_modules/, .git/ intocables
 
 ## Flujo de orquestación
 - orquestador → explorador → implementador-backend → revisor + revisor-b

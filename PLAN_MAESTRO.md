@@ -139,6 +139,11 @@ flowchart TB
 
 **✅ DoD:** Polígono abraza el papel en tiempo real en Chrome Android + Safari iOS, UI fluida, sin leaks.
 
+> ✅ **F1 COMPLETADA 2026-09-22 (D7 referenciada):** proceso PRESERVE lado mayor
+> 400px (P3; era 480p) · SM-A566E 14.0/14.4 FPS (D7: ≥12 + fluidez humana) ·
+> iPhone 19.5/28.0 · p95 58ms Samsung / 18-23ms iPhone · estrés 10 min heap
+> −15.8% · D6 (lente iOS correcta). Detalle en WORKFLOW_STATE.
+
 ---
 
 ### F2 — Score de Calidad + Shutter (4 días)
