@@ -80,7 +80,12 @@
   P1/P2 sin efecto (bottleneck: costo fijo por píxel — documentado).
 - **F1 COMPLETADA (2026-09-22):** código (116→125 tests, cob ≥95%, tsc) +
   humano en 2 dispositivos + D7. Evidencia en `PLAN_EVIDENCE/F1*/`.
-  Evidencia en `PLAN_EVIDENCE/F1-opt/`.
+- **F2 cerrada (código · 2026-09-22 · /ship doble APROBADO):** ScanOrchestrator
+  (FSM + burst-rank + manual + cooldown) + scoring puro + ScoreView.
+  151/151 tests, tsc limpio, cob ≥95%. E2E sintético: auto dispara 11× (ruta A),
+  blur no dispara + manual retry, noquad manual con quad null. ⏳ Falta
+  validación humana con papel CON TEXTO (Fase 0-empírica de umbrales).
+  Evidencia en `PLAN_EVIDENCE/F2/`.
 - **T6 cerrada (2026-09-22 · /ship doble APROBADO):** cierre del spike
   (D5/D6, takePhoto-iOS sin boost, decisiones 1-3, matriz congelada) + push de
   6 commits y redeploy Pages verificado (marcadores T1-R4 en servido + raw
@@ -124,8 +129,7 @@
 
 ## Decisiones de Arquitectura
 - **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F2 auto-shutter**
-  (F1 COMPLETADA código + humano en 2 dispositivos + D7; matriz congelada abajo)
-- **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
+  (F1 COMPLETADA código + humano en 2 dispositivos + D7; matriz congelada abajo)- **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
   adaptación: T4.1 `opencode mcp list` en TUI.
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;
   aviso de cap >3500px añadido al log. Re-validado sin errores.

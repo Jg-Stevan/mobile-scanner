@@ -1,0 +1,1 @@
+{"captures":[{"quadNull":true,"reval":195.9,"route":"A"}],"dropped":303,"fired":true,"manual":"captured-null-quad","memDeltaMB":1.03,"retries":0,"scene":"noquad","sent":1408,"states":["detecting","capturing","revalidating","captured","idle"],"timeouts":7}
