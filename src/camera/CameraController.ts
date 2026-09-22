@@ -37,8 +37,21 @@ export function hasRealAutofocus(focusModes: string[]): boolean {
   return focusModes.some((m) => REAL_AF_MODES.has(m.toLowerCase()));
 }
 
+/** Palabras que delatan un grupo NO-principal (ultra-wide/tele) en el label.
+ *  D6 (F1-b): iOS no expone focusMode y todos los grupos dan el mismo track
+ *  (D5) — el sort por resolución es ciego y eligió la ultra-wide en el iPhone. */
+export const LENS_WORDS_RE = /ultra|gran angular|wide|angular|tele|teleobjetivo/i;
+
+/** Nº de palabras del label (aprox de "términos de lente": menos = más simple). */
+function wordCount(label: string): number {
+  return label.split(/\s+/).filter((w) => w.length > 0).length;
+}
+
 /** Regla D3: traseras con autofocus real → desempate por max resolución.
- *  Sin AF en ninguna → fallback a la primera trasera + warning (fixed-focus).
+ *  Sin AF en ninguna → rama D6 (F1-b): preferir el grupo SIMPLE trasero (sin
+ *  palabras de lente); entre simples, menos palabras y luego más resolución
+ *  (D5: las resoluciones de grupos virtuales son idénticas/ciegas, así que el
+ *  conteo de palabras manda y la resolución solo desempata).
  *  Sin etiquetas traseras → se consideran TODAS + warning (facingMode no está
  *  disponible pre-stream; documentado como último fallback). */
 export function chooseMainCamera(probes: CameraProbe[]): CameraChoice | null {
@@ -56,8 +69,21 @@ export function chooseMainCamera(probes: CameraProbe[]): CameraChoice | null {
     const best = [...withAf].sort(byRes)[0]!;
     return { probe: best, warnings };
   }
-  const fallback = [...pool].sort(byRes)[0]!;
-  warnings.push(`sin autofocus real: fallback a "${fallback.label}" (fixed-focus)`);
+  // Rama D6: sin autofocus real (típico iOS) — heurística por label.
+  const simples = pool.filter((p) => !LENS_WORDS_RE.test(p.label));
+  const ranked =
+    simples.length > 0
+      ? [...simples].sort(
+          (a, b) => wordCount(a.label) - wordCount(b.label) || byRes(a, b),
+        )
+      : [...pool].sort(
+          (a, b) => a.label.length - b.label.length || byRes(a, b),
+        );
+  const fallback = ranked[0]!;
+  if (simples.length === 0) {
+    warnings.push(`sin grupo simple, usando "${fallback.label}"`);
+  }
+  warnings.push(`sin autofocus real: fallback a "${fallback.label}" (fixed-focus, D6)`);
   return { probe: fallback, warnings };
 }
 

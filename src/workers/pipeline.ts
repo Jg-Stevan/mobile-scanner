@@ -47,6 +47,9 @@ export interface PipelineRect {
 export interface CvApi {
   readonly COLOR_RGBA2GRAY: number;
   readonly RETR_LIST: number;
+  /** F1-opt palanca 1: solo contornos exteriores (las arrugas del papel generan
+   *  internos que se aproximaban en vano). Origen: profiling Fase 0. */
+  readonly RETR_EXTERNAL: number;
   readonly CHAIN_APPROX_SIMPLE: number;
   readonly CV_64F: number;
   matFromImageData(img: ImageData): PipelineMat;
@@ -146,7 +149,7 @@ export function processFrame(
     cv.Canny(blur, edges, canny.low, canny.high);
     const contours = track(cv.createMatVector());
     const hierarchy = track(cv.createMat());
-    cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
     // QuadDetector: top por área → approx → 4 vértices → core.
     const minArea = procW * procH * MIN_CONTOUR_AREA_PCT;

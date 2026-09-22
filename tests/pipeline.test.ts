@@ -47,6 +47,7 @@ interface MockContour {
 class MockCv implements CvApi {
   readonly COLOR_RGBA2GRAY = 6;
   readonly RETR_LIST = 1;
+  readonly RETR_EXTERNAL = 0;
   readonly CHAIN_APPROX_SIMPLE = 2;
   readonly CV_64F = 6;
   mats: MockMat[] = [];
@@ -58,6 +59,7 @@ class MockCv implements CvApi {
   roiCalls: PipelineRect[] = [];
   approxEps: number[] = [];
   cannyArgs: number[] = [];
+  findMode = -1;
 
   private reg(m: MockMat): MockMat {
     this.mats.push(m);
@@ -87,9 +89,11 @@ class MockCv implements CvApi {
     _img: PipelineMat,
     _c: PipelineMatVector,
     _h: PipelineMat,
-    _m1: number,
+    m1: number,
     _m2: number,
-  ): void {}
+  ): void {
+    this.findMode = m1;
+  }
   contourCount(_v: PipelineMatVector): number {
     return this.contours.length;
   }
@@ -175,6 +179,11 @@ describe('processFrame (detector F1)', () => {
     expect([CANNY_LOW, CANNY_HIGH]).toEqual([50, 150]);
     processFrame(cv, fakeImageData(), 200, 200, 0, { low: 75, high: 200 });
     expect(cv.cannyArgs).toEqual([75, 200]);
+  });
+  it('F1-opt P1: findContours con RETR_EXTERNAL (palanca FPS)', () => {
+    const cv = new MockCv();
+    processFrame(cv, fakeImageData(), 200, 200, 0);
+    expect(cv.findMode).toBe(cv.RETR_EXTERNAL);
   });
   it('triángulo (3 vértices) → null + stats del frame (sin roi)', () => {
     const cv = new MockCv();

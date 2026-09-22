@@ -1,0 +1,1 @@
+{"a":{"detected":true,"err":0.0033,"ms":71.0,"pass":true},"b":{"detected":false,"err":null,"ms":13.4,"pass":false},"c":{"detected":true,"err":0.0023,"ms":11.2,"pass":true},"d":{"detected":true,"err":0.0023,"ms":9.9,"pass":true},"e":{"detected":false,"err":null,"ms":10.9,"pass":true},"f":{"detected":false,"err":null,"ms":11.6,"pass":true}}

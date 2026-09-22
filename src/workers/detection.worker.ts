@@ -38,6 +38,7 @@ function post(msg: WorkerOut): void {
 function adaptCv(cv: {
   COLOR_RGBA2GRAY: number;
   RETR_LIST: number;
+  RETR_EXTERNAL: number;
   CHAIN_APPROX_SIMPLE: number;
   CV_64F: number;
   matFromImageData(img: ImageData): never;
@@ -58,6 +59,7 @@ function adaptCv(cv: {
   return {
     COLOR_RGBA2GRAY: cv.COLOR_RGBA2GRAY,
     RETR_LIST: cv.RETR_LIST,
+    RETR_EXTERNAL: cv.RETR_EXTERNAL,
     CHAIN_APPROX_SIMPLE: cv.CHAIN_APPROX_SIMPLE,
     CV_64F: cv.CV_64F,
     matFromImageData: (img) => cv.matFromImageData(img) as never as ReturnType<CvApi['matFromImageData']>,

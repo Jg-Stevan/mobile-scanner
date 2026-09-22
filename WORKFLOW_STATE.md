@@ -62,6 +62,15 @@
   con origen honesto (sin cambio lógico), harness mode=camera (D3 + Torch) y
   redeploy /f1/. 119/119 tests, tsc limpio. E2E fake-cam: 817 resultados,
   error simulado sin congelar. Evidencia en `PLAN_EVIDENCE/F1-a/`.
+- **F1-b cerrada (código · 2026-09-22 · /ship doble APROBADO):** D6 implementada
+  (filtro por label + menos-palabras; D3 intacta). 124/124 tests. ⏳ Re-test
+  humano iPhone pendiente (panel debe mostrar "Cámara trasera"). Evidencia en
+  `PLAN_EVIDENCE/F1-b/`.
+- **F1-opt P1 implementada (2026-09-22 · /ship doble APROBADO, NO validada):**
+  RETR_EXTERNAL + regresión fixtures intacta (b sigue fallando igual).
+  Redeploy /f1/ con la palanca (bundle verificado). ⏳ Falta FPS humano en
+  SM-A566E (≥15 → parar; <15 → palanca 2; agotadas → D7 pre-aprobada).
+  Evidencia en `PLAN_EVIDENCE/F1-opt/`.
 - **T6 cerrada (2026-09-22 · /ship doble APROBADO):** cierre del spike
   (D5/D6, takePhoto-iOS sin boost, decisiones 1-3, matriz congelada) + push de
   6 commits y redeploy Pages verificado (marcadores T1-R4 en servido + raw
@@ -78,8 +87,14 @@
 - _F0 spike humano: ejecución COMPLETADA en Android + iPhone (T6) — queda solo el
   pendiente menor del toggle torch real en iOS._
 - _T5-humano SM-A566E pendiente (selección camera 0, profile, ruta A) — ver abajo._
-- _F1-humano pendiente: SM-A566E (carta sobre mesa oscura → polígono verde, ≥15
-  FPS, <100ms, screenshot) + iPhone 17 Pro (misma prueba). Código F1 cerrado._
+- _F1-humano COMPLETADA (2026-09-22 · resultados humanos registrados):_
+  - _SM-A566E: quad verde en ambas orientaciones · FPS 12.3 (portrait) / 13.1
+    (landscape) — NO cumple ≥15 · latencia p95 94/79ms ✓ · D2 correcta (hint ON
+    en landscape, OFF en portrait) · D3 eligió camera 0 (cierra T5-humano)._
+  - _iPhone 17 Pro: quad verde ambas orientaciones · FPS 16.2/17.9 ✓ · latencia
+    p95 20/19ms ✓ · D2 correcta · torch real ON verificado (cierra T6)._
+  - _Hallazgo D6 (empírico): iPhone seleccionó "Cámara trasera con ultra gran
+    angular" (fallback D3 sin focusMode + sort por resolución) → F1-b obligatoria._
 
 ## Backlog F1 (notas registradas 2026-09-21, revisión externa T4 — no bloquean T4)
 - Benchmark de detección real en 2 condiciones (matiz del finding 1 de revisor-b,
@@ -109,6 +124,11 @@
   adaptación: T4.1 `opencode mcp list` en TUI.
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;
   aviso de cap >3500px añadido al log. Re-validado sin errores.
+- **Aprobación humana 2026-09-22 (FPS, condicional):** estrategia A-primero —
+  optimizar con las palancas del plan (RETR_EXTERNAL, cap contornos, 400p); si
+  tras agotarlas no se alcanza ≥15 FPS en SM-A566E (peor orientación), la
+  desviación   **D7** se activa AUTOMÁTICAMENTE (umbral ≥15 → ≥12 sostenido, p95
+  <100ms mantenido, fluidez visual confirmada por el humano). Sin nueva consulta.
 - Los agentes NO re-discuten decisiones del maestro; proponen por escrito, nunca inline (ver AGENTS.md).
 - **Aprobación humana 2026-09-21 (excentricidad):** ECCENTRICITY_MARGIN = 0.05
   del lado corto; score = mín de clamp(dMin/margin, 0, 1) por esquina;

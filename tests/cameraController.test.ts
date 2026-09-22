@@ -94,6 +94,47 @@ describe('hasRealAutofocus / chooseMainCamera (D3)', () => {
   });
 });
 
+describe('D6 iOS (F1-b): 8 grupos reales del iPhone 17 Pro, sin focusMode', () => {
+  // Labels del spike D5; resoluciones ADVERSAS (la ultra-wide "gana" por píxeles
+  // para probar que D6 manda sobre el sort ciego por resolución).
+  const IPHONE: CameraProbe[] = [
+    { deviceId: 'ff-uw', label: 'Cámara frontal con ultra gran angular', focusModes: [], torch: false, maxWidth: 100, maxHeight: 100 },
+    { deviceId: 'triple', label: 'Cámara trasera triple', focusModes: [], torch: true, maxWidth: 200, maxHeight: 200 },
+    { deviceId: 'dual-wa', label: 'Cámara trasera dual con gran angular', focusModes: [], torch: true, maxWidth: 300, maxHeight: 300 },
+    { deviceId: 'uw', label: 'Cámara trasera con ultra gran angular', focusModes: [], torch: true, maxWidth: 8000, maxHeight: 6000 },
+    { deviceId: 'dual', label: 'Cámara trasera dual', focusModes: [], torch: true, maxWidth: 400, maxHeight: 400 },
+    { deviceId: 'main', label: 'Cámara trasera', focusModes: [], torch: true, maxWidth: 500, maxHeight: 500 },
+    { deviceId: 'ff', label: 'Cámara frontal', focusModes: [], torch: false, maxWidth: 100, maxHeight: 100 },
+    { deviceId: 'tele', label: 'Cámara trasera con teleobjetivo', focusModes: [], torch: true, maxWidth: 7000, maxHeight: 5000 },
+  ];
+  it('elige el grupo simple "Cámara trasera" aunque ultra/tele tengan más píxeles', () => {
+    const c = chooseMainCamera(IPHONE);
+    expect(c!.probe.deviceId).toBe('main');
+    expect(c!.warnings.join(' ')).toMatch(/fixed-focus/);
+  });
+  it('orden de preferencia: simple-corto > simple-largo > excluidos', () => {
+    // Sin "Cámara trasera": gana "dual" (3 palabras) sobre "triple" (3, menos res)
+    // y sobre excluidos aunque tengan más píxeles.
+    const minusMain = IPHONE.filter((p) => p.deviceId !== 'main');
+    const c = chooseMainCamera(minusMain);
+    expect(c!.probe.deviceId).toBe('dual');
+  });
+  it('sin ningún simple → el label más corto + warning explícito', () => {
+    const onlyBad = IPHONE.filter((p) => ['uw', 'tele', 'dual-wa'].includes(p.deviceId));
+    const c = chooseMainCamera(onlyBad);
+    expect(c!.probe.deviceId).toBe('tele'); // "…con teleobjetivo" (31) < dual-wa (37) < uw (38)
+    expect(c!.warnings.join(' ')).toMatch(/sin grupo simple/);
+  });
+  it('Android con AF: D3 manda, D6 no interfiere', () => {
+    const c = chooseMainCamera([
+      { deviceId: 'uw', label: 'Cámara trasera con ultra gran angular', focusModes: [], torch: false, maxWidth: 8000, maxHeight: 6000 },
+      { deviceId: 'm', label: 'Cámara trasera', focusModes: ['continuous'], torch: true, maxWidth: 500, maxHeight: 500 },
+    ]);
+    expect(c!.probe.deviceId).toBe('m');
+    expect(c!.warnings).toEqual([]);
+  });
+});
+
 describe('CameraController.init', () => {
   it('desbloquea etiquetas con stream genérico antes de enumerar (origen fresco)', async () => {
     const stopped: unknown[] = [];
