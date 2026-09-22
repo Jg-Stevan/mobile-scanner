@@ -11,7 +11,7 @@ import { OVER_EXPOSED_PX, UNDER_EXPOSED_PX } from '../core/quality';
 export const DARK_RATIO = 0.25;
 export const BRIGHT_RATIO = 0.25;
 
-export const HINT_NO_QUAD = 'Acerca el documento al recuadre';
+export const HINT_NO_QUAD = 'Acerca el documento al recuadro';
 export const HINT_CENTER = 'Centra el documento';
 export const HINT_GLARE = 'Evita el reflejo, muévete';
 export const HINT_DARK = 'Muy oscuro';

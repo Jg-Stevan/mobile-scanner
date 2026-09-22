@@ -99,16 +99,9 @@
   `ideal` de entrada — el spec T5 exige 3840). ⏳ Falta validación humana en
   SM-A566E (ver arriba). Evidencia en `PLAN_EVIDENCE/T5-camera/`.
 ## Tareas en Progreso
-- _F1-humano COMPLETADA (2026-09-22 · resultados humanos registrados):_
-  - _SM-A566E: quad verde en ambas orientaciones · FPS 12.3 (portrait) / 13.1
-    (landscape) — NO cumple ≥15 · latencia p95 94/79ms ✓ · D2 correcta (hint ON
-    en landscape, OFF en portrait) · D3 eligió camera 0 (cierra T5-humano)._
-  - _iPhone 17 Pro: quad verde ambas orientaciones · FPS 16.2/17.9 ✓ · latencia
-    p95 20/19ms ✓ · D2 correcta · torch real ON verificado (cierra T6 y el
-    pendiente menor de torch-iOS)._
-  - _Hallazgo D6 (empírico): iPhone seleccionó "Cámara trasera con ultra gran
-    angular" (fallback D3 sin focusMode + sort por resolución) → F1-b obligatoria
-    (CERRADA y validada: panel "Cámara trasera", 19.5/28.0 FPS)._
+- _F1-humano COMPLETADA (2026-09-22): SM 12.3/13.1 FPS + D3 camera 0 (cierra
+  T5-humano) · iPhone 16.2/17.9 + torch ON (cierra T6) · D2 OK ambos · hallazgo
+  D6 → F1-b (CERRADA y validada)._
 - _F1-opt P3 (2026-09-22): FPS finales SM-A566E 14.0 portrait / 14.4 landscape ·
   p95 58ms · fluidez visual humana ("va bastante fluido, va bien") → D7 ACTIVA.
   F1-CLOSE sella F1 como COMPLETADA._
