@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F2 — auto-shutter en dispositivo</title>
+<style>
+  body { font: 14px system-ui; background: #111; color: #ddd; margin: 0; padding: 12px; }
+  .vwrap { position: relative; width: 100%; max-width: 640px; }
+  video { width: 100%; display: block; background: #000; }
+  canvas.overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #ring { width: 84px; height: 84px; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+  button { font: inherit; padding: 10px 14px; margin: 4px 4px 4px 0; }
+  #shutterBtn { font-size: 17px; }
+  #toast { font-weight: 700; color: #eab308; min-height: 20px; }
+  #thumb { border: 1px solid #444; max-width: 320px; }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 8px 0; }
+  .metrics div { background: #222; padding: 6px 8px; border-radius: 6px; }
+  .metrics b { color: #4c4; }
+  pre { background: #000; padding: 8px; overflow: auto; max-height: 160px; }
+</style>
+</head>
+<body>
+<h1>F2 — auto-shutter (harness temporal de dispositivo)</h1>
+<div class="vwrap">
+  <video id="v" playsinline muted autoplay></video>
+  <canvas id="ov" class="overlay" width="640" height="480"></canvas>
+</div>
+<div class="row">
+  <canvas id="ring" width="84" height="84"></canvas>
+  <div>
+    <button id="shutterBtn">📷 Shutter manual</button>
+    <button id="torchBtn">Torch: ?</button>
+  </div>
+</div>
+<div id="toast"></div>
+<div class="metrics">
+  <div>Cámara: <b id="mCam">—</b></div>
+  <div>Estado: <b id="mState">—</b></div>
+  <div>FPS: <b id="mFps">—</b></div>
+  <div>Contornos: <b id="mCont">—</b></div>
+  <div>Capturas: <b id="mCap">0</b></div>
+</div>
+<div>Última ganadora (score <span id="mScore">—</span>):<br><canvas id="thumb" width="320" height="240"></canvas></div>
+<pre id="out">…</pre>
+<script type="module">
+import { startFrameLoop } from './src/camera/frameLoop.ts';
+import { CameraController } from './src/camera/CameraController.ts';
+import { ScannerView, shouldSuggestPortrait, PORTRAIT_HINT } from './src/ui/ScannerView.ts';
+import { ScoreView } from './src/ui/ScoreView.ts';
+import { ScanOrchestrator } from './src/scan/ScanOrchestrator.ts';
+
+const $ = (id) => document.getElementById(id);
+const toast = (s) => { $('toast').textContent = s; };
+let toastTimer = 0;
+
+async function main() {
+  const video = $('v');
+  const ctl = CameraController.browser();
+  const profile = await ctl.init({ video });
+  await video.play();
+  $('mCam').textContent = `${profile.label} (${profile.trackWidth}×${profile.trackHeight})`;
+
+  const worker = new Worker(new URL('./src/workers/detection.worker.ts', import.meta.url));
+  await new Promise((resolve, reject) => {
+    const to = setTimeout(() => reject(new Error('worker timeout')), 90000);
+    worker.onmessage = (ev) => {
+      if (ev.data && ev.data.type === 'ready') { clearTimeout(to); resolve(); }
+      if (ev.data && ev.data.type === 'error') { clearTimeout(to); reject(new Error(ev.data.message)); }
+    };
+  });
+
+  const view = new ScannerView(video, $('ov'));
+  const scoreView = new ScoreView($('ring'));
+  let results = 0;
+  let captures = 0;
+  const tStart = performance.now();
+
+  const orch = new ScanOrchestrator({
+    video,
+    deps: {
+      capturePhoto: async () => {
+        const w = video.videoWidth;
+        const h = video.videoHeight;
+        if ('ImageCapture' in window) {
+          try {
+            const stream = video.srcObject;
+            const track = stream.getVideoTracks()[0];
+            const blob = await new ImageCapture(track).takePhoto();
+            const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+            return { bitmap, w: bitmap.width, h: bitmap.height, route: 'A' };
+          } catch {
+            // fallback a B abajo
+          }
+        }
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(video, 0, 0, w, h);
+        const bitmap = await createImageBitmap(c);
+        return { bitmap, w, h, route: 'B' };
+      },
+      notify: (kind) => {
+        if (kind === 'timeout') return 'none'; // F2-b: sin vibrar en timeout
+        // Captura: vibra en Android, flash verde en iOS (fallback)
+        try {
+          if (navigator.vibrate && navigator.vibrate(50)) return 'haptic';
+        } catch {
+          // iOS: flash verde del overlay como feedback de captura
+        }
+        const ov = $('ov');
+        ov.style.boxShadow = 'inset 0 0 0 6px #22c55e';
+        setTimeout(() => { ov.style.boxShadow = 'none'; }, 250);
+        return 'none';
+      },
+    },
+    events: {
+      onState: (s) => { $('mState').textContent = s; },
+      onScore: (s) => scoreView.render(s.total, s.hint),
+      onCaptured: (p) => {
+        captures++;
+        $('mCap').textContent = String(captures);
+        $('mScore').textContent = String(p.revalScore.toFixed(0));
+        const th = $('thumb');
+        th.getContext('2d').drawImage(p.bitmap, 0, 0, th.width, th.height);
+        $('out').textContent = JSON.stringify(
+          { route: p.route, reval: +p.revalScore.toFixed(1), quadNull: p.quadPrior === null, ts: p.ts }, null, 1);
+      },
+      onRetry: (r) => toast(r),
+      onTimeout: () => {
+        toast('Activa la captura manual o mejora la iluminación');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast(''), 4000);
+      },
+    },
+  });
+
+  const loop = startFrameLoop({
+    video,
+    worker,
+    onResult: (q, ts, corners) => {
+      results++;
+      orch.onWorkerResult(q, corners, ts);
+      if (q.diag) $('mCont').textContent = String(q.diag.contourCount);
+      const hint = corners && shouldSuggestPortrait(corners, q.frameW, q.frameH) ? PORTRAIT_HINT : null;
+      view.render({ corners, valid: corners !== null }, q.frameW, q.frameH, hint);
+      if (results % 20 === 0) {
+        $('mFps').textContent = (results / ((performance.now() - tStart) / 1000)).toFixed(1);
+      }
+    },
+  });
+  orch.start();
+
+  let torchOn = false;
+  const capsTorch = profile.capabilities.torch;
+  $('torchBtn').textContent = capsTorch ? 'Torch: off' : 'Torch: n/a';
+  $('torchBtn').onclick = async () => {
+    if (!capsTorch) return;
+    const r = await ctl.setTorch(!torchOn);
+    if (r !== 'unsupported') torchOn = !torchOn;
+    $('torchBtn').textContent = `Torch: ${torchOn ? 'ON' : 'off'}`;
+  };
+  $('shutterBtn').onclick = () => { void orch.captureManual(); };
+  window.__orch = orch;
+  window.__stats = () => loop.stats();
+}
+
+if (new URLSearchParams(location.search).get('autostart') === '1') main().catch((e) => {
+  document.getElementById('out').textContent = 'ERROR: ' + e.message;
+});
+</script>
+</body>
+</html>

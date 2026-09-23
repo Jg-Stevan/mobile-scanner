@@ -4,9 +4,9 @@
 // OpenCV/DOM quedan en el worker (F1-F2). Testeable en Node con Vitest.
 //
 // CONTRATO DE MEDICIÓN: todas las métricas se calculan sobre el CROP del
-// documento a resolución fija (480p de lado largo, nunca sobre el frame
-// completo). Los umbrales se calibraron para esa escala; medir a otra escala
-// invalida las constantes.
+// documento a resolución fija (400-clase de lado largo, nunca sobre el frame
+// completo — F1-opt P3). Los umbrales se calibraron para esa escala; medir a
+// otra escala invalida las constantes.
 //
 // Las constantes son valores iniciales de referencia a calibrar con capturas
 // reales (el plan lo declara); viven aquí exportadas, nunca inline. Cada una
@@ -19,7 +19,7 @@ import type { Quadrilateral, QualityScore } from './types';
 /** v3 §5-F2: ponderación del score compuesto. */
 export const WEIGHTS = { sharpness: 0.4, exposure: 0.3, stability: 0.3 } as const;
 
-/** Saturación de Var(Laplacian) medida sobre el crop a 480p (doc teórico). */
+/** Saturación de Var(Laplacian) medida sobre el crop a 400-clase (doc teórico). */
 export const SHARPNESS_NORM = 300;
 
 /** isBlur si la varianza cruda < 100 (v3 §5-F2). OJO: compara la VARIANZA
@@ -38,7 +38,7 @@ export const SPECULAR_PX = 248;
 /** >3% de píxeles especulares → warning "evita el reflejo" (v3 §5-F2). */
 export const SPECULAR_RATIO_WARN = 0.03;
 
-/** Varianza de posiciones de quads (px²) normalizada a 480p (doc teórico). */
+/** Varianza de posiciones de quads (px²) normalizada a 400-clase (doc teórico). */
 export const STABILITY_VAR_NORM = 20.0;
 
 /** Ventana TEMPORAL de estabilidad en ms (APROBADA por humano 2026-09-22 F2-b:
@@ -52,8 +52,17 @@ export const SHUTTER_SCORE = 0.8;
 
 /** El score debe superar SHUTTER_SCORE de forma sostenida 600ms (APROBADA por
  *  humano 2026-09-22 F2-b: inanición de ventanas en acta densa — 345ms entre
- *  muestras → 300ms nunca contiene 2). */
+ *  muestras → 300ms nunca contiene 2).
+ *  @deprecated sustituido por k-de-n F2-c (SHUTTER_K/N/SPAN); se conserva porque
+ *  el benchmark/tests históricos lo referencian. */
 export const SHUTTER_HOLD_MS = 600;
+
+/** F2-c (APROBADA por humano 2026-09-22): criterio k-de-n. K buenas requeridas
+ *  de las últimas N muestras dentro de SPAN — tolera caídas puntuales del
+ *  autofocus (evidencia: video F2-b, score 92-95 sostenido 9s sin disparar). */
+export const SHUTTER_K = 4;
+export const SHUTTER_N = 6;
+export const SHUTTER_SPAN_MS = 1200;
 
 /** Sin detección >8s → escape a captura manual (v3 §5-F2). */
 export const NO_DETECT_TIMEOUT_MS = 8000;
@@ -92,15 +101,15 @@ export interface ScoreParts {
   eccentricity?: number | null;
 }
 
-/** Nitidez 0–1: saturación lineal de Var(Laplacian) del crop a 480p. */
+/** Nitidez 0–1: saturación lineal de Var(Laplacian) del crop a 400-clase. */
 export function computeSharpnessScore(laplacianVar: number): number {
   if (!Number.isFinite(laplacianVar) || laplacianVar <= 0) return 0;
   return Math.min(1, laplacianVar / SHARPNESS_NORM);
 }
 
-/** Exposición 0–1 desde el histograma de 256 bins del crop a 480p.
- *  under = píxeles con valor < UNDER_EXPOSED_PX; over = valor > OVER_EXPOSED_PX.
- *  score = 1 − (under + over). specularRatio = fracción > SPECULAR_PX. */
+/** Exposición 0–1 desde el histograma de 256 bins del crop a 400-clase.
+  *  under = píxeles con valor < UNDER_EXPOSED_PX; over = valor > OVER_EXPOSED_PX.
+  *  score = 1 − (under + over). specularRatio = fracción > SPECULAR_PX. */
 export function computeExposureScore(hist: number[]): ExposureResult {
   let total = 0;
   let under = 0;
@@ -122,10 +131,10 @@ export function computeExposureScore(hist: number[]): ExposureResult {
 }
 
 /** Estabilidad 0–1: 1 − clamp(meanVar / STABILITY_VAR_NORM).
- *  Solo entran muestras con `nowMs − t` dentro de STABILITY_WINDOW_MS (por
- *  TIMESTAMP: el backpressure descarta frames, el índice miente). <2 muestras
- *  en ventana → 0. meanVar = media de las varianzas poblacionales de las 8
- *  coordenadas (x,y × 4 esquinas) en px² a 480p. */
+  *  Solo entran muestras con `nowMs − t` dentro de STABILITY_WINDOW_MS (por
+  *  TIMESTAMP: el backpressure descarta frames, el índice miente). <2 muestras
+  *  en ventana → 0. meanVar = media de las varianzas poblacionales de las 8
+  *  coordenadas (x,y × 4 esquinas) en px² a 400-clase. */
 export function computeStabilityScore(history: QuadSample[], nowMs: number): number {
   const inWindow = history.filter((s) => nowMs - s.t >= 0 && nowMs - s.t <= STABILITY_WINDOW_MS);
   if (inWindow.length < 2) return 0;
@@ -219,23 +228,21 @@ export function computeTotalScore(
   };
 }
 
-/** Disparo: true si la racha final continua de scores > SHUTTER_SCORE cubre al
- *  menos SHUTTER_HOLD_MS (por timestamps) y contiene ≥2 muestras. La racha se
- *  corta en el primer score ≤ umbral mirando hacia atrás desde la última
- *  muestra (= "todos los scores de los últimos 300ms > 0.8", inmune a huecos
- *  del backpressure porque compara tiempos, no índices). */
+/** Disparo k-de-n (APROBADA por humano 2026-09-22 F2-c): true si entre las
+ *  últimas N muestras dentro de SPAN hay al menos K con score > SHUTTER_SCORE
+ *  Y la última muestra es buena. Tolera hasta N-K caídas puntuales del
+ *  autofocus/exposición. Reemplaza la racha continua (F2-b). */
 export function shouldTriggerShutter(history: ScoreSample[]): boolean {
-  if (history.length < 2) return false;
+  if (history.length < SHUTTER_K) return false;
   const sorted = [...history].sort((a, b) => a.t - b.t);
   const now = sorted[sorted.length - 1]!.t;
-  let runStart = now;
-  let runLen = 0;
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    if (sorted[i]!.score <= SHUTTER_SCORE) break;
-    runStart = sorted[i]!.t;
-    runLen++;
-  }
-  return runLen >= 2 && now - runStart >= SHUTTER_HOLD_MS;
+  const last = sorted[sorted.length - 1]!;
+  if (last.score <= SHUTTER_SCORE) return false;
+  const inSpan = sorted.filter((s) => s.t >= now - SHUTTER_SPAN_MS);
+  const lastN = inSpan.slice(-SHUTTER_N);
+  let good = 0;
+  for (const s of lastN) if (s.score > SHUTTER_SCORE) good++;
+  return good >= SHUTTER_K;
 }
 
 /** Escape a manual: true si pasó más de NO_DETECT_TIMEOUT_MS desde el primer

@@ -80,16 +80,11 @@
   P1/P2 sin efecto (bottleneck: costo fijo por píxel — documentado).
 - **F1 COMPLETADA (2026-09-22):** código (116→125 tests, cob ≥95%, tsc) +
   humano en 2 dispositivos + D7. Evidencia en `PLAN_EVIDENCE/F1*/`.
-- **F2 cerrada (código · 2026-09-22 · /ship doble APROBADO):** ScanOrchestrator
-  (FSM + burst-rank + manual + cooldown) + scoring puro + ScoreView.
-  151→153 tests, tsc limpio, cob ≥95%. E2E sintético: auto dispara 11× (ruta A),
-  blur no dispara + manual retry, noquad manual con quad null. ⏳ Falta
-  validación humana con papel CON TEXTO (Fase 0-empírica de umbrales).
-  Evidencia en `PLAN_EVIDENCE/F2/`.
-- **F2-b cerrada (2026-09-22 · /ship doble APROBADO):** ventanas 300→600
-  (inanición acta densa) + timeout sin vibrar. 153/153 tests, tsc limpio.
-  P4 RECHAZADA → D8 (FPS overlay denso aceptado bajo). Redeploy /f2/.
-  Evidencia en `PLAN_EVIDENCE/F2-b/`.
+- **F2-c cerrada (2026-09-22 · /ship doble APROBADO):** k-de-n (4/6 en 1200ms)
+  desbloquea acta densa (antes: 3.1 FPS, racha 600ms imposible; ahora: auto <5s).
+  Timeout sin vibrar (solo toast) elimina confusión vibración/captura. Flash iOS
+  restaurado en harness. 156/156 tests, tsc limpio. Evidencia en
+  `PLAN_EVIDENCE/F2-c/`.
 - **T6 cerrada (2026-09-22 · /ship doble APROBADO):** cierre del spike
   (D5/D6, takePhoto-iOS sin boost, decisiones 1-3, matriz congelada) + push de
   6 commits y redeploy Pages verificado (marcadores T1-R4 en servido + raw
@@ -103,13 +98,7 @@
   `ideal` de entrada — el spec T5 exige 3840). ⏳ Falta validación humana en
   SM-A566E (ver arriba). Evidencia en `PLAN_EVIDENCE/T5-camera/`.
 ## Tareas en Progreso
-- **Sonda modelos-v2 (2026-09-22):** Creación de PLAN_EVIDENCE/sonda-modelos-v2.txt con contenido sonda-v2-ok usando el pipeline v2.
-- _F1-humano COMPLETADA (2026-09-22): SM 12.3/13.1 FPS + D3 camera 0 (cierra
-  T5-humano) · iPhone 16.2/17.9 + torch ON (cierra T6) · D2 OK ambos · hallazgo
-  D6 → F1-b (CERRADA y validada)._
-- _F1-opt P3 (2026-09-22): FPS finales SM-A566E 14.0 portrait / 14.4 landscape ·
-  p95 58ms · fluidez visual humana ("va bastante fluido, va bien") → D7 ACTIVA.
-  F1-CLOSE sella F1 como COMPLETADA._
+- _F2-c COMPLETADA (2026-09-22): k-de-n (4/6 en 1200ms) + timeout sin vibrar + flash iOS. 156/156 tests, tsc limpio. Re-test humano pendiente (acta densa + carta normal). Evidencia en `PLAN_EVIDENCE/F2-c/`._
 
 ## Backlog F1 (notas registradas 2026-09-21 — PAGADAS en F1 salvo custom OpenCV)
 - ~~Benchmark SQUASH vs PRESERVE~~ ✓ pagado en F1 Fase 0 (decisión PRESERVE).
@@ -126,7 +115,7 @@
 - T4.1 `opencode mcp list` → 4/4 desde mobile-scanner — ⏳ **última pendiente** (CLI cuelga; visual TUI)
 
 ## Decisiones de Arquitectura
-- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F2 auto-shutter**
+- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F3 recorte preciso**
   (F1 COMPLETADA código + humano en 2 dispositivos + D7; matriz congelada abajo)- **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
   adaptación: T4.1 `opencode mcp list` en TUI.
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;

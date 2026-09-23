@@ -10,8 +10,10 @@ import {
   BLUR_THRESHOLD,
   NO_DETECT_TIMEOUT_MS,
   SHARPNESS_NORM,
-  SHUTTER_HOLD_MS,
+  SHUTTER_K,
+  SHUTTER_N,
   SHUTTER_SCORE,
+  SHUTTER_SPAN_MS,
   SPECULAR_RATIO_WARN,
   STABILITY_WINDOW_MS,
   computeEccentricityScore,
@@ -37,7 +39,7 @@ function hist(parts: Array<[number, number]>): number[] {
   return h;
 }
 
-describe('sharpness (Var Laplacian sobre crop 480p)', () => {
+describe('sharpness (Var Laplacian sobre crop 400-clase)', () => {
   it(`var >= ${SHARPNESS_NORM} satura a 1.0`, () => {
     expect(computeSharpnessScore(300)).toBe(1.0);
     expect(computeSharpnessScore(600)).toBe(1.0);
@@ -127,49 +129,104 @@ describe('stability (ventana TEMPORAL por timestamps — backpressure)', () => {
   });
 });
 
-describe('shutter (racha continua por timestamps, F2-b: 600ms)', () => {
-  it('0.9 sostenido 610ms → true (600ms, inanición acta: 345ms necesita la ventana)', () => {
+describe('shutter k-de-n (APROBADA por humano 2026-09-22 F2-c: 4 de 6 en 1200ms, última buena)', () => {
+  it('0,345,690,1035 todas 0.9 → true en t=1035 (acta a 2.9 FPS, ~1s)', () => {
     expect(
       shouldTriggerShutter([
         { t: 0, score: 0.9 },
         { t: 345, score: 0.9 },
         { t: 690, score: 0.9 },
+        { t: 1035, score: 0.9 },
       ]),
     ).toBe(true);
+    expect(SHUTTER_K).toBe(4);
+    expect(SHUTTER_N).toBe(6);
+    expect(SHUTTER_SPAN_MS).toBe(1200);
     expect(SHUTTER_SCORE).toBe(0.8);
-    expect(SHUTTER_HOLD_MS).toBe(600);
   });
-  it('0.9 hace 345ms (un salto de acta) pero sin 2ª muestra en 600ms → false', () => {
+  it('6 muestras 0.9 a 300ms → true (6/6)', () => {
     expect(
       shouldTriggerShutter([
         { t: 0, score: 0.9 },
-        { t: 345, score: 0.9 },
+        { t: 300, score: 0.9 },
+        { t: 600, score: 0.9 },
+        { t: 900, score: 0.9 },
+        { t: 1200, score: 0.9 },
+        { t: 1500, score: 0.9 },
       ]),
-    ).toBe(false);
+    ).toBe(true);
   });
-  it('0.9 sostenido solo 500ms → false (no alcanzó los 600ms)', () => {
+  it('intercaladas: 4 buenas de 6 con última buena → true (tolerancia F2-c)', () => {
+    // F2-b exigía racha continua 500ms → false; F2-c tolera 2 caídas → true
     expect(
       shouldTriggerShutter([
         { t: 0, score: 0.9 },
         { t: 100, score: 0.9 },
-        { t: 345, score: 0.9 },
+        { t: 200, score: 0.5 },
+        { t: 300, score: 0.9 },
+        { t: 400, score: 0.5 },
+        { t: 500, score: 0.9 },
+      ]),
+    ).toBe(true);
+  });
+  it('3 buenas de 6 (última buena) → false', () => {
+    expect(
+      shouldTriggerShutter([
+        { t: 0, score: 0.9 },
+        { t: 100, score: 0.5 },
+        { t: 200, score: 0.5 },
+        { t: 300, score: 0.9 },
+        { t: 400, score: 0.5 },
         { t: 500, score: 0.9 },
       ]),
     ).toBe(false);
   });
-  it('fallo antiguo fuera de la ventana no contamina', () => {
+  it('última ≤0.8 → false aun con 5 buenas antes', () => {
     expect(
       shouldTriggerShutter([
-        { t: 0, score: 0.5 },
-        { t: 1400, score: 0.9 },
-        { t: 1700, score: 0.9 },
-        { t: 2000, score: 0.9 },
+        { t: 0, score: 0.9 },
+        { t: 100, score: 0.9 },
+        { t: 200, score: 0.9 },
+        { t: 300, score: 0.9 },
+        { t: 400, score: 0.9 },
+        { t: 500, score: 0.5 },
       ]),
-    ).toBe(true);
+    ).toBe(false);
   });
-  it('< 2 muestras → false', () => {
+  it('muestras fuera del span (>1200ms) no cuentan', () => {
+    expect(
+      shouldTriggerShutter([
+        { t: 0, score: 0.9 },
+        { t: 100, score: 0.9 },
+        { t: 200, score: 0.9 },
+        { t: 300, score: 0.9 },
+        { t: 1400, score: 0.9 },
+        { t: 1500, score: 0.9 },
+      ]),
+    ).toBe(false);
+  });
+  it('< 4 muestras → false', () => {
     expect(shouldTriggerShutter([])).toBe(false);
     expect(shouldTriggerShutter([{ t: 0, score: 0.95 }])).toBe(false);
+    expect(
+      shouldTriggerShutter([
+        { t: 0, score: 0.9 },
+        { t: 100, score: 0.9 },
+        { t: 200, score: 0.9 },
+      ]),
+    ).toBe(false);
+  });
+  it('excentricidad 0.3 sostenida → sigue sin disparar (total 0.3 < 0.8)', () => {
+    const t = new Float32Array([0.0, 0.2, 0.9, 0.2, 0.9, 0.8, 0.0, 0.8]);
+    void t;
+    expect(
+      shouldTriggerShutter([
+        { t: 0, score: 0.3 },
+        { t: 345, score: 0.3 },
+        { t: 690, score: 0.3 },
+        { t: 1035, score: 0.3 },
+      ]),
+    ).toBe(false);
   });
 });
 
@@ -188,10 +245,11 @@ describe('total (pesos 0.4/0.3/0.3 + renormalización)', () => {
     expect(q.total).toBeCloseTo(0.4 * 0.8 + 0.3 * 0.6 + 0.3 * 0.4, 12);
     expect(q.eccentricity).toBe(1); // neutro mientras esté bloqueada
   });
-describe('eccentricity (APROBADA humano 2026-09-21, T3-b)', () => {
-  // Frame 640×480 → lado corto 480 → margin = 0.05·480 = 24px.
-  const W = 640;
-  const H = 480;
+
+  describe('eccentricity (APROBADA humano 2026-09-21, T3-b)', () => {
+    // Frame 640×480 → lado corto 480 → margin = 0.05·480 = 24px.
+    const W = 640;
+    const H = 480;
   it('quad centrado (esquinas ≥ 24px del borde) → 1.0', () => {
     const q: Quadrilateral = [
       { x: 100, y: 100 },
@@ -280,7 +338,9 @@ describe('eccentricity (APROBADA humano 2026-09-21, T3-b)', () => {
       ]),
     ).toBe(false);
   });
+
 });
+
 });
 
 describe('timeout (escape a manual)', () => {

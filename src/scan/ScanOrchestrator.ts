@@ -9,7 +9,7 @@
 import type { Quadrilateral, QualityScore } from '../core/types';
 import {
   BLUR_THRESHOLD,
-  SHUTTER_HOLD_MS,
+  SHUTTER_SPAN_MS,
   STABILITY_WINDOW_MS,
   computeEccentricityScore,
   computeExposureScore,
@@ -281,7 +281,7 @@ export class ScanOrchestrator {
       0,
     );
     this.scoreHistory.push({ t: ts, score: total.total });
-    this.scoreHistory = this.scoreHistory.filter((s) => now - s.t <= SHUTTER_HOLD_MS + 200);
+    this.scoreHistory = this.scoreHistory.filter((s) => now - s.t <= SHUTTER_SPAN_MS + 200);
 
     const hint = selectHint({
       hasQuad: corners !== null,
