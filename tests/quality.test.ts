@@ -1,8 +1,8 @@
 // tests/quality.test.ts — QualityScorer + máquina de disparo (T3).
 // PLAN_MAESTRO §5-F2. Todo sintético y determinista; umbrales desde las
 // constantes de src/core/quality.ts (el test NO los duplica inline salvo para
-// documentar la expectativa: SHARPNESS_NORM=300, BLUR=100, ventana 300ms,
-// shutter 0.8/300ms, timeout 8000ms).
+// documentar la expectativa: SHARPNESS_NORM=300, BLUR=100, ventanas 600ms (F2-b),
+// disparo k-de-n 4/6 @1200ms (F2-c), timeout 8000ms).
 import { describe, expect, it } from 'vitest';
 
 import type { Quadrilateral } from '../src/core/types';
@@ -243,11 +243,12 @@ describe('total (pesos 0.4/0.3/0.3 + renormalización)', () => {
     expect(q.total).toBeCloseTo(0.4 * 0.8 + 0.3 * 0.6 + 0.3 * 0.4, 12);
     expect(q.eccentricity).toBe(1); // neutro mientras esté bloqueada
   });
+});
 
-  describe('eccentricity (APROBADA humano 2026-09-21, T3-b)', () => {
-    // Frame 640×480 → lado corto 480 → margin = 0.05·480 = 24px.
-    const W = 640;
-    const H = 480;
+describe('eccentricity (APROBADA humano 2026-09-21, T3-b)', () => {
+  // Frame 640×480 → lado corto 480 → margin = 0.05·480 = 24px.
+  const W = 640;
+  const H = 480;
   it('quad centrado (esquinas ≥ 24px del borde) → 1.0', () => {
     const q: Quadrilateral = [
       { x: 100, y: 100 },
@@ -336,8 +337,6 @@ describe('total (pesos 0.4/0.3/0.3 + renormalización)', () => {
       ]),
     ).toBe(false);
   });
-
-});
 
 });
 

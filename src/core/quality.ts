@@ -5,8 +5,10 @@
 //
 // CONTRATO DE MEDICIÓN: todas las métricas se calculan sobre el CROP del
 // documento a resolución fija (400-clase de lado largo, nunca sobre el frame
-// completo — F1-opt P3). Los umbrales se calibraron para esa escala; medir a
-// otra escala invalida las constantes.
+// completo — F1-opt P3). HISTORIA DEL CONTRATO: original 480p (doc teórico) →
+// F1-opt P3 movió el proceso a 400-clase (bottleneck Exynos) → umbrales
+// VALIDADOS empíricamente a 400 en F2 (disparo correcto en SM-A566E + iPhone,
+// F2-c). Recalibración formal solo si se observan desvíos en capturas reales.
 //
 // Las constantes son valores iniciales de referencia a calibrar con capturas
 // reales (el plan lo declara); viven aquí exportadas, nunca inline. Cada una

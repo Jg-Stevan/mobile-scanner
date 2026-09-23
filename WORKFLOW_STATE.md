@@ -98,7 +98,7 @@
   `ideal` de entrada — el spec T5 exige 3840). ⏳ Falta validación humana en
   SM-A566E (ver arriba). Evidencia en `PLAN_EVIDENCE/T5-camera/`.
 ## Tareas en Progreso
-- _Ninguna — F2-c cerrada; re-test humano listado en "Verificaciones pendientes"._
+- _Ninguna — F2-c cerrada con re-test humano completado._
 - **F3-a cerrada (código · 2026-09-22):** re-detección sobre la foto en
   ScanOrchestrator (deps nuevas `photoProcessBitmap` + `detectPhoto`:
   downscale a 400-clase vía `computeProcessDims` + `DetectRequest` al worker,
@@ -107,16 +107,58 @@
   `needsEditorReview=true`; sin reintento automático). `quadPrior` conserva su
   nombre (equivale al `priorQuad` de la orden; el harness F2 lo consume). Hook
   F3-b (CornerRefiner) marcado en `redetectOnPhoto`. 162/162 tests, tsc limpio.
+- **F3-c cerrada (código · 2026-09-22):** warp final (PLAN_MAESTRO §F3).
+  `src/core/warp.ts` nuevo (WARP_MAX_LONG_SIDE=3500, UNSHARP 0.5/1.5,
+  `computeWarpDims` del quad — sin ratios hardcodeados) + `WarpRequest`/
+  `WarpResult` en protocolo + `warpPage` en pipeline (INTER_CUBIC + unsharp,
+  todo en `withMats()`) + rama `'warp'` en el worker (mismo backpressure que
+  `'detect'`, `busy` reseteado en `finally`) + dep `requestWarp` en el
+  orquestador (`CapturedPhoto.warped/warpW/warpH`; fallo → null y sigue la
+  cruda, sin reintento). Integrada con el quad sin refinar (F3-b no había
+  aterrizado — precondición de la orden). 182/182 tests, tsc limpio. Estrés
+  10 min detect+warp: 513664 iters, 0 leaks, heap 12.2→8.4MB (APTO).
+- **F3-b cerrada (código · 2026-09-22):** CornerRefiner real (blindajes 1-3 §F3).
+  `src/core/cornerBands.ts` nuevo (`computeBandRects`: max(30px,1.5%·lado),
+  clamp a foto, consume BAND_* de geometry) + `refineQuad` en pipeline (Canny por
+  banda → puntos → `fitLineTrimmed` → `refineQuadFromLines`; lado sin puntos =
+  línea degenerada → fallback por lado; MIN_EDGE_POINTS=20, única constante nueva)
+  + refine ANTES de la homografía en la rama `'warp'` (`WarpResult` +=
+  `refinedQuad`/`refined`/`fellBack`) + `cornerRefiner.ts` deja el stub
+  (`assembleRefinedQuad` + `needsEditorReview` para F4) + `CapturedPhoto.quadRefined`
+  (lado caído → needsEditorReview, blindaje 3). DoD precisión: fixture 3000×4000
+  con entrada ±6px (error 400-clase) → refinado a 0.371px del GT (<1px).
+  201/201 tests, tsc limpio. Estrés 10 min detect+refine+warp: 937502 iters,
+  0 leaks, heap 13.2→9.0MB (APTO).
+
+## Operación del entorno (no-tareas — creada en F3-d)
+
+**Regla:** "Tareas en Progreso" solo lista trabajo activo con spec; toda operación
+de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
+
+- **Sonda modelos-v2 (2026-09-22, re-clasificada en F3-d):** sonda de
+  conectividad/modelos sin spec ni /ship — operación de infraestructura, no tarea
+  de proyecto. Traza: `PLAN_EVIDENCE/sonda-modelos-v2.txt` (contenido `sonda-v2-ok`,
+  "pipeline v2" no existe en el proyecto) creado por el commit automático
+  `b0f3cca checkpoint(opencode)`. La entrada citada por la auditoría F2-b NO se
+  encontró en este archivo (verificado por grep 2026-09-22) — el txt es la única
+  traza; se conserva por regla de no-borrado de la auditoría. Detectada por
+  auditoría externa F2-b.
 
 ## Backlog F1 (notas registradas 2026-09-21 — PAGADAS en F1 salvo custom OpenCV)
 - ~~Benchmark SQUASH vs PRESERVE~~ ✓ pagado en F1 Fase 0 (decisión PRESERVE).
 - ~~Estrés de 10 min~~ ✓ pagado en F1 (heap −15.8%).
 - Build custom OpenCV (~2-3MB) pre-producción → movido a backlog F6/PWA.
 
+## Backlog F4 (insumo de F3 — registrado en F3-d, hueco de auditoría F3-b)
+
+- F4 debe consumir `needsEditorReview(quadRefined ? fellBack : null)` — con
+  `fellBack` null el orquestador NO marca revisión (decisión F3-b contra regresión
+  F3-c); el helper trata null=desconocido→revisar, y F4 debe heredar ese criterio.
+
 ## Verificaciones pendientes (TUI/humanas)
-- **F2-c re-test humano (2026-09-22, PENDIENTE):** en SM-A566E — acta densa
-  (¿auto dispara <5s?), documento normal en movimiento (¿sin disparo espurio?),
-  timeout = solo toast sin vibración, captura = vibra/flash.
+- **F2-c re-test humano (2026-09-22, CERRADA):** APROBADA en SM-A566E + iPhone —
+  auto dispara <5s en acta densa, sin disparo espurio en movimiento, timeout = solo
+  toast, captura = vibra/flash. Evidencia en `PLAN_EVIDENCE/F2-device/`.
 - T5-humano ✓ CERRADO por F1-humano (camera 0 por D3 en SM-A566E).
 - Toggle torch real iOS ✓ CERRADO (verificado ON en F1-b).
 - T0.5 `opencode agent list` → 8 agentes desde mobile-scanner — **HECHO** (verificado 2026-09-20; evidencia 00 actualizada)
