@@ -98,7 +98,15 @@
   `ideal` de entrada — el spec T5 exige 3840). ⏳ Falta validación humana en
   SM-A566E (ver arriba). Evidencia en `PLAN_EVIDENCE/T5-camera/`.
 ## Tareas en Progreso
-- _F2-c COMPLETADA (2026-09-22): k-de-n (4/6 en 1200ms) + timeout sin vibrar + flash iOS. 156/156 tests, tsc limpio. Re-test humano pendiente (acta densa + carta normal). Evidencia en `PLAN_EVIDENCE/F2-c/`._
+- _Ninguna — F2-c cerrada; re-test humano listado en "Verificaciones pendientes"._
+- **F3-a cerrada (código · 2026-09-22):** re-detección sobre la foto en
+  ScanOrchestrator (deps nuevas `photoProcessBitmap` + `detectPhoto`:
+  downscale a 400-clase vía `computeProcessDims` + `DetectRequest` al worker,
+  quad en coords de foto; gate final con `revalidate` sobre el downscale de la
+  foto; fallback prior del stream escalado con `scaleQuad` +
+  `needsEditorReview=true`; sin reintento automático). `quadPrior` conserva su
+  nombre (equivale al `priorQuad` de la orden; el harness F2 lo consume). Hook
+  F3-b (CornerRefiner) marcado en `redetectOnPhoto`. 162/162 tests, tsc limpio.
 
 ## Backlog F1 (notas registradas 2026-09-21 — PAGADAS en F1 salvo custom OpenCV)
 - ~~Benchmark SQUASH vs PRESERVE~~ ✓ pagado en F1 Fase 0 (decisión PRESERVE).
@@ -106,6 +114,9 @@
 - Build custom OpenCV (~2-3MB) pre-producción → movido a backlog F6/PWA.
 
 ## Verificaciones pendientes (TUI/humanas)
+- **F2-c re-test humano (2026-09-22, PENDIENTE):** en SM-A566E — acta densa
+  (¿auto dispara <5s?), documento normal en movimiento (¿sin disparo espurio?),
+  timeout = solo toast sin vibración, captura = vibra/flash.
 - T5-humano ✓ CERRADO por F1-humano (camera 0 por D3 en SM-A566E).
 - Toggle torch real iOS ✓ CERRADO (verificado ON en F1-b).
 - T0.5 `opencode agent list` → 8 agentes desde mobile-scanner — **HECHO** (verificado 2026-09-20; evidencia 00 actualizada)

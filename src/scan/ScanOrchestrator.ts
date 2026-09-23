@@ -1,9 +1,12 @@
-// src/scan/ScanOrchestrator.ts — FSM + score en vivo + burst-rank + manual (F2).
+// src/scan/ScanOrchestrator.ts — FSM + score en vivo + burst-rank + manual (F2)
+// + re-detección sobre la foto (F3-a).
 // Consume quality.ts (APROBADO, sin editar) y scoring.ts puro. El worker SOLO
 // manda crudos (prohibido tocar pipeline F1): el histograma de exposición se
 // muestrea en el main thread (frame completo a ~160px, barato) porque el
 // protocolo no lo trae — desviación documentada, consistente con la de
-// revalidación (F3 aún no re-detecta el quad en la foto).
+// revalidación. F3-a: la foto ganadora se re-detecta (DetectRequest al worker,
+// quad en coords de foto) y se revalida sobre su downscale; el quad del stream
+// queda como prior (F4 lo edita si needsEditorReview).
 // Deps inyectables (patrón T5) → unit sin navegador. Sin setInterval.
 
 import type { Quadrilateral, QualityScore } from '../core/types';
@@ -19,7 +22,8 @@ import {
   detectionTimedOut,
   shouldTriggerShutter,
 } from '../core/quality';
-import type { RawQualityInput } from '../workers/protocol';
+import { scaleQuad } from '../core/geometry';
+import type { DetectRequest, RawQualityInput } from '../workers/protocol';
 import { computeProcessDims } from '../workers/protocol';
 import { measureFrame, selectHint, underOverRatios } from './scoring';
 
@@ -35,15 +39,22 @@ export interface BurstCandidate {
   route: CaptureRouteTag;
 }
 
-/** Foto ganadora: CRUDA + quad del stream como PRIOR (F3 la re-detecta). */
+/** Foto ganadora (F3-a): bitmap hi-res + quad re-detectado SOBRE la foto en
+ *  coordenadas de foto (px). `quadPrior` = quad del stream en fracciones
+ *  (SOLO prior/ROI — la orden lo llama priorQuad; se conserva el nombre
+ *  existente por compatibilidad con el harness F2). Sin quad en la foto →
+ *  fallback al prior escalado a la foto + needsEditorReview (lo consume F4).
+ *  Hook F3-b: el CornerRefiner refinará `quad` aquí (hoy pasa sin refinar). */
 export interface CapturedPhoto {
   bitmap: ImageBitmap;
+  quad: Quadrilateral | null;
   quadPrior: Float32Array | null;
   frameW: number;
   frameH: number;
   revalScore: number;
   ts: number;
   route: CaptureRouteTag;
+  needsEditorReview: boolean;
 }
 
 export interface ScoreView {
@@ -63,6 +74,13 @@ export interface OrchestratorDeps {
   capturePhoto(): Promise<BurstCandidate | null>;
   /** Downscale a 400-clase para revalidar (computeProcessDims). */
   downscale(bitmap: ImageBitmap, w: number, h: number): Promise<ImageData>;
+  /** Bitmap 400-clase de la foto para re-detectar (prod: createImageBitmap
+   *  con resize — mismo camino que frameLoop.capture; el worker lo cierra). */
+  photoProcessBitmap(bitmap: ImageBitmap, w: number, h: number): Promise<ImageBitmap>;
+  /** Re-detección sobre la foto: recibe el DetectRequest y resuelve los
+   *  corners en fracciones (o null). Default: null (sin worker cableado →
+   *  fallback al prior). El cableado real UI→worker vive en la app. */
+  detectPhoto(req: DetectRequest): Promise<Float32Array | null>;
   /** Feedback de plataforma: 'haptic' si vibró, 'none' si debe flashear UI. */
   notify(kind: 'captured' | 'timeout'): 'haptic' | 'none';
 }
@@ -118,6 +136,9 @@ export class ScanOrchestrator {
   private lastExposureScore = 1;
   private cooldownTimer: ReturnType<typeof setTimeout> | null = null;
   private lastCorners: Float32Array | null = null;
+  /** Dims del frame que produjo lastCorners (para escalar el prior a la foto). */
+  private lastFrameW = 0;
+  private lastFrameH = 0;
 
   constructor(opts: OrchestratorOptions = {}) {
     const video = opts.video;
@@ -201,6 +222,19 @@ export class ScanOrchestrator {
         ctx.drawImage(bitmap, 0, 0, w, h);
         return ctx.getImageData(0, 0, w, h);
       },
+      photoProcessBitmap: async (bitmap: ImageBitmap, w: number, h: number) => {
+        const crib = (
+          globalThis as unknown as {
+            createImageBitmap?: (
+              b: ImageBitmap,
+              o: ImageBitmapOptions,
+            ) => Promise<ImageBitmap>;
+          }
+        ).createImageBitmap;
+        if (typeof crib !== 'function') throw new Error('photoProcessBitmap sin createImageBitmap');
+        return crib(bitmap, { resizeWidth: w, resizeHeight: h, resizeQuality: 'low' });
+      },
+      detectPhoto: async () => null,
       notify: (kind: 'captured' | 'timeout') => {
         if (kind === 'timeout') return 'none'; // F2-b: vibración SOLO en captura (antes vibraba también en timeout cada 8s → indistinguible; toast ya avisa)
         try {
@@ -235,6 +269,8 @@ export class ScanOrchestrator {
     this.quadHistory = [];
     this.scoreHistory = [];
     this.lastCorners = null; // sin quad heredado (el sampler arranca full-frame)
+    this.lastFrameW = 0;
+    this.lastFrameH = 0;
   }
 
   stop(): void {
@@ -248,6 +284,8 @@ export class ScanOrchestrator {
   onWorkerResult(q: RawQualityInput, corners: Float32Array | null, ts: number): void {
     if (this.state !== 'detecting') return;
     this.lastCorners = corners;
+    this.lastFrameW = q.frameW;
+    this.lastFrameH = q.frameH;
 
     const lapVar = q.laplacianVar ?? 0;
     const sharpness = computeSharpnessScore(lapVar);
@@ -371,16 +409,39 @@ export class ScanOrchestrator {
       this.events.onRetry('reintentando…');
       return 'retry';
     }
+    // F3-a: la foto ganadora es la fuente de verdad. Gate final SOBRE su
+    // downscale (revalidate reutilizado — el ranking ya no basta) +
+    // re-detección del quad sobre ella. Sin pass → detecting + retry.
+    let final: { pass: boolean; score: number };
+    try {
+      final = await this.revalidate(winner.c);
+    } catch {
+      final = { pass: false, score: -1 };
+    }
+    if (!final.pass) {
+      try {
+        winner.c.bitmap.close();
+      } catch {
+        // ya cerrado: nada
+      }
+      this.firstAttempt = this.deps.now();
+      this.setState('detecting');
+      this.events.onRetry('reintentando…');
+      return 'retry';
+    }
+    const photoQuad = await this.redetectOnPhoto(winner.c);
     this.setState('captured');
     this.deps.notify('captured');
     this.events.onCaptured({
       bitmap: winner.c.bitmap,
+      quad: photoQuad.quad,
       quadPrior: this.lastCorners,
       frameW: winner.c.w,
       frameH: winner.c.h,
-      revalScore: winner.score,
+      revalScore: final.score,
       ts: this.deps.now(),
       route: winner.c.route,
+      needsEditorReview: photoQuad.needsEditorReview,
     });
     this.stopTimer();
     this.cooldownTimer = setTimeout(() => {
@@ -394,11 +455,12 @@ export class ScanOrchestrator {
     return 'captured';
   }
 
-  /** Revalidación sobre frame completo a 400-clase (F3 aún no re-detecta el
-   *  quad en la foto — desviación documentada del contrato "crop"; el
-   *  documento domina el encuadre). Pass = gate de nitidez BLUR_THRESHOLD
-   *  (aprobado) + gate de exposición REVAL_MIN_EXPOSURE_SCORE (ingeniería F2).
-   *  Score = lapVar normalizado para ranking (mayor = mejor). */
+  /** Revalidación a 400-clase (computeProcessDims 'preserve'): rankea los
+   *  candidatos del burst y da el gate final sobre la foto ganadora (F3-a).
+   *  Pass = gate de nitidez BLUR_THRESHOLD (aprobado) + gate de exposición
+   *  REVAL_MIN_EXPOSURE_SCORE (ingeniería F2). Score = lapVar para ranking
+   *  (mayor = mejor). Mide frame completo porque el documento domina el
+   *  encuadre (desviación documentada del contrato "crop"). */
   private async revalidate(
     c: BurstCandidate,
   ): Promise<{ pass: boolean; score: number }> {
@@ -409,4 +471,52 @@ export class ScanOrchestrator {
     const pass = m.laplacianVar >= BLUR_THRESHOLD && e.score >= REVAL_MIN_EXPOSURE_SCORE;
     return { pass, score: m.laplacianVar };
   }
+
+  /** F3-a: re-detección del quad SOBRE la foto ganadora. Downscale a
+   *  400-clase → DetectRequest al worker → quad en coords de foto (px).
+   *  Sin quad (null o error del worker) → fallback al prior del stream
+   *  escalado a la foto con scaleQuad + needsEditorReview (F4 lo edita).
+   *  NUNCA reintenta en automático (evita bucle de capturas). Hook F3-b:
+   *  el CornerRefiner refinará el quad devuelto aquí (hoy sin refinar). */
+  private async redetectOnPhoto(
+    c: BurstCandidate,
+  ): Promise<{ quad: Quadrilateral | null; needsEditorReview: boolean }> {
+    const dims = computeProcessDims(c.w, c.h, 'preserve');
+    let corners: Float32Array | null = null;
+    try {
+      const proc = await this.deps.photoProcessBitmap(c.bitmap, dims.w, dims.h);
+      try {
+        corners = await this.deps.detectPhoto({ type: 'detect', bitmap: proc, ts: this.deps.now() });
+      } finally {
+        try {
+          proc.close();
+        } catch {
+          // transferido al worker (él lo cierra) o mock sin close: nada
+        }
+      }
+    } catch {
+      corners = null; // sin bitmap de proceso o worker caído → fallback
+    }
+    if (isFractions8(corners)) {
+      return { quad: fractionsToQuad(corners, c.w, c.h), needsEditorReview: false };
+    }
+    const prior = this.lastCorners;
+    if (isFractions8(prior) && this.lastFrameW > 0 && this.lastFrameH > 0) {
+      const streamQuad = fractionsToQuad(prior, this.lastFrameW, this.lastFrameH);
+      return {
+        quad: scaleQuad(streamQuad, c.w / this.lastFrameW, c.h / this.lastFrameH),
+        needsEditorReview: true,
+      };
+    }
+    return { quad: null, needsEditorReview: true };
+  }
+}
+
+/** Fracciones 0–1 bien formadas (8 floats finitos). */
+function isFractions8(c: Float32Array | null): c is Float32Array {
+  if (c === null || c.length !== 8) return false;
+  for (let i = 0; i < 8; i++) {
+    if (!Number.isFinite(c[i])) return false;
+  }
+  return true;
 }

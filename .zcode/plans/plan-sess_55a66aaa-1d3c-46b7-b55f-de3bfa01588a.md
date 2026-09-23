@@ -1,33 +1,20 @@
-## Plan: delegación ZCode (planifica/revisa) + opencode (implementa)
+## Siguientes pasos
 
-### Fase A — Documentar la política de modelos
+### 1. Anotar la regla aprobada en la política
+En `C:\Users\JG\opencode-historial\catalogos\roles-modelos.md`, regla 2 de la economía de tokens: subagente del bucle mecánico **de una sola pasada** — lanza opencode con `--auto` desde el inicio (sin él los permisos "ask" auto-rechazan y se pierde una pasada completa, comprobado en el piloto), corre la verificación y devuelve solo el veredicto; sin permiso para reintentar por su cuenta. Aclaración de las dos cuotas: opencode gasta cuota Zen/opencode; el subagente corre con el modelo de la sesión ZCode (GLM-5.3-Flash) y sus tokens salen de la cuota del plan ZCode — por eso el bucle debe ser estrecho.
 
-Actualizar el registro en `C:\Users\JG\opencode-historial\catalogos\` (nueva sección en `MODELOS-EXPLORACION.md` o archivo `roles-modelos.md`) con la asignación aprobada:
+### 2. Higiene de WORKFLOW_STATE.md
+La línea 101 aún lista F2-c en "Tareas en Progreso" — ya está en Completadas; mover la nota de "re-test humano pendiente" a la sección de verificaciones pendientes para que el estado no duplique.
 
-| Rol | Modelo | Uso |
-|---|---|---|
-| Implementador | `opencode/muse-spark-1.3-contributor-free` | Código desde orden de trabajo (piloto F2-c) |
-| Workhorse mecánico | `opencode/nemotron-3.5-lightning-free` | Exploración, docs, boilerplate tests, HTML harness |
-| Revisor/diagnóstico duro | `opencode/nemotron-3-ultra-free` | Solo tras 2 fallos del escalón anterior |
-| Visión | `opencode/mimo-v2.6-flash-free` | Screenshots/capturas del harness |
-| Reserva refactor | `opencode/big-pickle` | Diffs grandes deliberados; no gastar por defecto |
-| Parqueado | `opencode/ling-3.0-flash-fin-free` | Sin rol en mobile-scanner |
-| Emergencia | `opencode/muse-spark-1.2-contributor-free` | Solo si 1.3 da rate-limit (78% cuota ya usada) |
+### 3. TÚ: re-test humano F2-c en dispositivo (bloquea el cierre definitivo)
+SM-A566E con acta densa (¿auto dispara <5s?) y documento normal (¿sin disparo espurio al mover?), timeout = solo toast sin vibración, captura = vibra/flash. Si algo falla, me pasas el video y diagnóstico como la vez pasada.
 
-Reglas anti-despilfarro incluidas en el documento:
-1. Escalera ascendente (lightning → 1.3 → ultra), nunca al revés
-2. A opencode solo se le pasa la orden de trabajo (`-f`), nunca el repo entero
-3. Iteraciones con `-s <session-id>` (sesión, no re-envío de contexto)
-4. Sin tocar `.opencode/` — el modelo se pasa siempre por flag `-m` (decisión del usuario)
+### 4. YO: planificar F3 (recorte preciso) mientras tanto
+F3 no depende del re-test de F2-c (es el pipeline de captura→warp, no el disparo):
+- Leer la sección F3 del PLAN_MAESTRO y el código actual (`hiResCapture`, rutas A/B/C, geometry.ts) — delegando la exploración ancha a un subagente Explore.
+- Escribir `TAREAS/F3.md`: orden de trabajo con la especificación de F3, prohibiciones (umbrales, aspect ratios, tests/bench, withMats) y criterios de aceptación.
+- Delegar la implementación a opencode `muse-spark-1.3` vía subagente de una sola pasada (regla del punto 1) y verificar yo mismo.
 
-### Fase B — Piloto F2-c con el protocolo
-
-1. Escribo `TAREAS/F2-c.md` (carpeta nueva en el repo): orden de trabajo completa del criterio k-de-n aprobado (≥4 de últimas 6 muestras >0.8 en 1200ms, última muestra buena; retención de `scoreHistory` a `SHUTTER_SPAN_MS + 200` = 1400ms; reescritura de tests; higiene: entrada fantasma "Sonda modelos-v2" en WORKFLOW_STATE, flash iOS del harness). Incluye prohibiciones (no tocar `tests/bench/`, `PLAN_EVIDENCE/`, umbrales de `src/core/`, `.opencode/`) y criterios de aceptación (`npm test` verde con 153 tests, `npx tsc --noEmit` limpio).
-2. Lanzo: `opencode run -m opencode/muse-spark-1.3-contributor-free --title "F2-c k-de-n" "$(cat TAREAS/F2-c.md)"` desde mi terminal.
-3. Verifico yo mismo: `npm test`, `npx tsc --noEmit`, revisión del diff contra la especificación (withMats, umbrales, coordenadas). Si falla, itero con `-s <session-id>` en la misma sesión de opencode; si falla 2 veces, escalo el modelo según la escalera.
-4. Al terminar: auditó su sección de WORKFLOW_STATE.md y dejo el commit pendiente para ti (regla M2: commit manual).
-
-### Lo que NO se hace
-- No se tocan `.opencode/`, `PLAN_EVIDENCE/`, `tests/bench/`, PLAN_MAESTRO
-- No se integran modelos nuevos a la cadena de fallbacks permanente (gpt-sol sigue en su registro de probes, separado)
-- No se ejecutan validaciones en dispositivo físico (siguen siendo tuyas)
+### No se hace
+- No se tocan PLAN_MAESTRO, tests/bench/, .opencode/, umbrales de src/core/
+- No se implementa F3 sin tu revisión de la orden de trabajo si hay decisiones de diseño nuevas

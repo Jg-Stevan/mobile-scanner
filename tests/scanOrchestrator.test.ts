@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { OrchestratorDeps } from '../src/scan/ScanOrchestrator';
 import { CAPTURE_COOLDOWN_MS, ScanOrchestrator } from '../src/scan/ScanOrchestrator';
-import type { RawQualityInput } from '../src/workers/protocol';
+import type { DetectRequest, RawQualityInput } from '../src/workers/protocol';
 
 function fakeBitmap(): ImageBitmap & { closed: boolean } {
   const b = {
@@ -73,6 +73,8 @@ function setup(over: Partial<OrchestratorDeps> = {}) {
     ],
     capturePhoto: async () => ({ bitmap: fakeBitmap(), w: 3000, h: 4000, route: 'A' }),
     downscale: async () => docSharp(),
+    photoProcessBitmap: async () => fakeBitmap(),
+    detectPhoto: async () => null,
     notify: () => 'haptic',
     ...over,
   };
@@ -380,6 +382,145 @@ describe('defaults de navegador (stubs DOM, vía flujos públicos)', () => {
     expect(draws[1]!.slice(1, 5)).toEqual([32, 24, 576, 432]);
     expect(draws[1]!.slice(5, 9)).toEqual([0, 0, 160, 120]);
     vi.unstubAllGlobals();
+  });
+});
+
+describe('F3-a: re-detección sobre la foto', () => {
+  const PHOTO_QUAD = new Float32Array([0.2, 0.25, 0.8, 0.25, 0.8, 0.75, 0.2, 0.75]);
+
+  function procBitmap(w: number, h: number): ImageBitmap {
+    const b = fakeBitmap();
+    (b as unknown as { width: number }).width = w;
+    (b as unknown as { height: number }).height = h;
+    return b as unknown as ImageBitmap;
+  }
+
+  function setupF3a(
+    over: Partial<OrchestratorDeps> = {},
+    detectImpl: (req: DetectRequest) => Promise<Float32Array | null> = async () => PHOTO_QUAD,
+  ) {
+    const posted: DetectRequest[] = [];
+    const resized: Array<{ w: number; h: number }> = [];
+    const downs: Array<{ bitmap: ImageBitmap; w: number; h: number }> = [];
+    const photoBmp = fakeBitmap();
+    const t = setup({
+      capturePhoto: async () => ({ bitmap: photoBmp, w: 3000, h: 4000, route: 'A' }),
+      downscale: (async (bitmap: ImageBitmap, w: number, h: number) => {
+        downs.push({ bitmap, w, h });
+        return docSharp();
+      }) as OrchestratorDeps['downscale'],
+      photoProcessBitmap: (async (_bitmap: ImageBitmap, w: number, h: number) => {
+        resized.push({ w, h });
+        return procBitmap(w, h);
+      }) as OrchestratorDeps['photoProcessBitmap'],
+      detectPhoto: (async (req: DetectRequest) => {
+        posted.push(req);
+        return detectImpl(req);
+      }) as OrchestratorDeps['detectPhoto'],
+      ...over,
+    });
+    return { ...t, posted, resized, downs, photoBmp };
+  }
+
+  async function trigger(t: { ctl: ScanOrchestrator; feed: (ts: number) => void }): Promise<void> {
+    t.ctl.start();
+    for (const ts of [0, 100, 200, 400, 600, 700]) t.feed(ts);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  type PhotoOut = {
+    quad: Array<{ x: number; y: number }> | null;
+    quadPrior: Float32Array | null;
+    needsEditorReview: boolean;
+  };
+
+  /** Igualdad de quads con tolerancia (las fracciones viajan en Float32Array). */
+  function expectQuadClose(
+    actual: Array<{ x: number; y: number }> | null,
+    expected: Array<[number, number]>,
+  ): void {
+    expect(actual).not.toBeNull();
+    expect(actual).toHaveLength(4);
+    for (let i = 0; i < 4; i++) {
+      expect(actual![i]!.x).toBeCloseTo(expected[i]![0], 3);
+      expect(actual![i]!.y).toBeCloseTo(expected[i]![1], 3);
+    }
+  }
+
+  it('disparo → foto a 400-clase (300×400) y DetectRequest al worker', async () => {
+    const t = setupF3a();
+    await trigger(t);
+    expect(t.ctl.getState()).toBe('captured');
+    expect(t.resized).toEqual([{ w: 300, h: 400 }]); // foto 3000×4000, lado mayor → 400
+    expect(t.posted).toHaveLength(1);
+    expect(t.posted[0]!.type).toBe('detect');
+    expect(t.posted[0]!.bitmap.width).toBe(300);
+    expect(t.posted[0]!.bitmap.height).toBe(400);
+    expect(Number.isFinite(t.posted[0]!.ts)).toBe(true);
+  });
+
+  it('revalidación final mide el downscale de la FOTO (ranking + gate final)', async () => {
+    const t = setupF3a();
+    await trigger(t);
+    // foto 3000×4000 → 300×400 (ranking + gate final); frames 640×480 → 400×300
+    expect(t.downs.filter((d) => d.bitmap === t.photoBmp && d.w === 300 && d.h === 400)).toHaveLength(2);
+    expect(t.downs.filter((d) => d.w === 400 && d.h === 300)).toHaveLength(2);
+  });
+
+  it('sin quad en foto → prior del stream escalado a la foto + needsEditorReview', async () => {
+    const t = setupF3a({}, async () => null);
+    await trigger(t); // feed CENTERED por defecto (stream 640×480)
+    expect(t.ctl.getState()).toBe('captured');
+    const photo = t.events.captured[0] as PhotoOut;
+    expect(photo.needsEditorReview).toBe(true);
+    expect(photo.quadPrior).not.toBeNull();
+    // CENTERED (0.1…0.9) × foto 3000×4000
+    expectQuadClose(photo.quad, [
+      [300, 400],
+      [2700, 400],
+      [2700, 3600],
+      [300, 3600],
+    ]);
+  });
+
+  it('gate final sobre la foto fail → detecting + retry (ganadora cerrada)', async () => {
+    const photoBmp = fakeBitmap();
+    const queue = [docSharp(), docSharp(), docSharp(), gray(10)]; // ranking ×3 pass, foto fail
+    const t = setupF3a({
+      capturePhoto: async () => ({ bitmap: photoBmp, w: 3000, h: 4000, route: 'A' }),
+      downscale: (async () => queue.shift() ?? docSharp()) as OrchestratorDeps['downscale'],
+    });
+    await trigger(t);
+    expect(t.ctl.getState()).toBe('detecting');
+    expect(t.events.retries).toEqual(['reintentando…']);
+    expect(t.events.captured).toHaveLength(0);
+    expect(photoBmp.closed).toBe(true);
+  });
+
+  it('quad de foto presente → needsEditorReview=false y prior registrado', async () => {
+    const t = setupF3a();
+    await trigger(t);
+    const photo = t.events.captured[0] as PhotoOut;
+    expect(photo.needsEditorReview).toBe(false);
+    expect(photo.quadPrior).not.toBeNull();
+    // PHOTO_QUAD × foto 3000×4000
+    expectQuadClose(photo.quad, [
+      [600, 1000],
+      [2400, 1000],
+      [2400, 3000],
+      [600, 3000],
+    ]);
+  });
+
+  it('detectPhoto rechaza → fallback al prior sin romper', async () => {
+    const t = setupF3a({}, async () => {
+      throw new Error('worker caído');
+    });
+    await trigger(t);
+    expect(t.ctl.getState()).toBe('captured');
+    const photo = t.events.captured[0] as PhotoOut;
+    expect(photo.needsEditorReview).toBe(true);
+    expect(photo.quad).not.toBeNull();
   });
 });
 
