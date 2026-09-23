@@ -217,8 +217,6 @@ describe('shutter k-de-n (APROBADA por humano 2026-09-22 F2-c: 4 de 6 en 1200ms,
     ).toBe(false);
   });
   it('excentricidad 0.3 sostenida → sigue sin disparar (total 0.3 < 0.8)', () => {
-    const t = new Float32Array([0.0, 0.2, 0.9, 0.2, 0.9, 0.8, 0.0, 0.8]);
-    void t;
     expect(
       shouldTriggerShutter([
         { t: 0, score: 0.3 },

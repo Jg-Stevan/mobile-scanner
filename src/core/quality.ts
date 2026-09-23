@@ -108,8 +108,8 @@ export function computeSharpnessScore(laplacianVar: number): number {
 }
 
 /** Exposición 0–1 desde el histograma de 256 bins del crop a 400-clase.
-  *  under = píxeles con valor < UNDER_EXPOSED_PX; over = valor > OVER_EXPOSED_PX.
-  *  score = 1 − (under + over). specularRatio = fracción > SPECULAR_PX. */
+ *  under = píxeles con valor < UNDER_EXPOSED_PX; over = valor > OVER_EXPOSED_PX.
+ *  score = 1 − (under + over). specularRatio = fracción > SPECULAR_PX. */
 export function computeExposureScore(hist: number[]): ExposureResult {
   let total = 0;
   let under = 0;
@@ -131,10 +131,10 @@ export function computeExposureScore(hist: number[]): ExposureResult {
 }
 
 /** Estabilidad 0–1: 1 − clamp(meanVar / STABILITY_VAR_NORM).
-  *  Solo entran muestras con `nowMs − t` dentro de STABILITY_WINDOW_MS (por
-  *  TIMESTAMP: el backpressure descarta frames, el índice miente). <2 muestras
-  *  en ventana → 0. meanVar = media de las varianzas poblacionales de las 8
-  *  coordenadas (x,y × 4 esquinas) en px² a 400-clase. */
+ *  Solo entran muestras con `nowMs − t` dentro de STABILITY_WINDOW_MS (por
+ *  TIMESTAMP: el backpressure descarta frames, el índice miente). <2 muestras
+ *  en ventana → 0. meanVar = media de las varianzas poblacionales de las 8
+ *  coordenadas (x,y × 4 esquinas) en px² a 400-clase. */
 export function computeStabilityScore(history: QuadSample[], nowMs: number): number {
   const inWindow = history.filter((s) => nowMs - s.t >= 0 && nowMs - s.t <= STABILITY_WINDOW_MS);
   if (inWindow.length < 2) return 0;
