@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { OrchestratorDeps } from '../src/scan/ScanOrchestrator';
 import { CAPTURE_COOLDOWN_MS, ScanOrchestrator } from '../src/scan/ScanOrchestrator';
-import type { DetectRequest, RawQualityInput } from '../src/workers/protocol';
+import { assembleRefinedQuad, needsEditorReview } from '../src/scan/cornerRefiner';
+import type { DetectRequest, RawQualityInput, WarpRequest } from '../src/workers/protocol';
 
 function fakeBitmap(): ImageBitmap & { closed: boolean } {
   const b = {
@@ -75,6 +76,7 @@ function setup(over: Partial<OrchestratorDeps> = {}) {
     downscale: async () => docSharp(),
     photoProcessBitmap: async () => fakeBitmap(),
     detectPhoto: async () => null,
+    requestWarp: async () => null,
     notify: () => 'haptic',
     ...over,
   };
@@ -521,6 +523,213 @@ describe('F3-a: re-detección sobre la foto', () => {
     const photo = t.events.captured[0] as PhotoOut;
     expect(photo.needsEditorReview).toBe(true);
     expect(photo.quad).not.toBeNull();
+  });
+});
+
+describe('F3-c: warp final de la foto', () => {
+  const PHOTO_QUAD = new Float32Array([0.2, 0.25, 0.8, 0.25, 0.8, 0.75, 0.2, 0.75]);
+
+  type WarpOut = {
+    bitmap: ImageBitmap;
+    w: number;
+    h: number;
+    refinedQuad: Float32Array | null;
+    refined: boolean;
+    fellBack: [boolean, boolean, boolean, boolean] | null;
+  };
+  type CapturedF3c = {
+    quad: Array<{ x: number; y: number }> | null;
+    warped: (ImageBitmap & { closed: boolean }) | null;
+    warpW: number;
+    warpH: number;
+  };
+
+  function setupF3c(
+    over: Partial<OrchestratorDeps> = {},
+    warpImpl: (req: WarpRequest) => Promise<WarpOut | null> = async () => ({
+      bitmap: fakeBitmap(),
+      w: 1800,
+      h: 2000,
+      refinedQuad: null,
+      refined: false,
+      fellBack: null,
+    }),
+  ) {
+    const warps: WarpRequest[] = [];
+    const photoBmp = fakeBitmap();
+    const t = setup({
+      capturePhoto: async () => ({ bitmap: photoBmp, w: 3000, h: 4000, route: 'A' }),
+      downscale: async () => docSharp(),
+      photoProcessBitmap: async () => fakeBitmap(),
+      detectPhoto: async () => PHOTO_QUAD,
+      requestWarp: (async (req: WarpRequest) => {
+        warps.push(req);
+        return warpImpl(req);
+      }) as OrchestratorDeps['requestWarp'],
+      ...over,
+    });
+    return { ...t, warps, photoBmp };
+  }
+
+  async function trigger(t: { ctl: ScanOrchestrator; feed: (ts: number) => void }): Promise<void> {
+    t.ctl.start();
+    for (const ts of [0, 100, 200, 400, 600, 700]) t.feed(ts);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it('tras el quad de foto → WarpRequest (bitmap ganador + quad en fracciones)', async () => {
+    const t = setupF3c();
+    await trigger(t);
+    expect(t.ctl.getState()).toBe('captured');
+    expect(t.warps).toHaveLength(1);
+    expect(t.warps[0]!.type).toBe('warp');
+    expect(t.warps[0]!.bitmap).toBe(t.photoBmp);
+    expect(Array.from(t.warps[0]!.quad)).toEqual(Array.from(PHOTO_QUAD));
+    expect(Number.isFinite(t.warps[0]!.ts)).toBe(true);
+  });
+
+  it('warped expuesto en onCaptured (bitmap + dims del worker)', async () => {
+    const t = setupF3c();
+    await trigger(t);
+    const photo = t.events.captured[0] as CapturedF3c;
+    expect(photo.warped).not.toBeNull();
+    expect(photo.warped!.closed).toBe(false);
+    expect(photo.warpW).toBe(1800);
+    expect(photo.warpH).toBe(2000);
+  });
+
+  it('warp caído (throw) → warped null y la captura SIGUE (sin reintento)', async () => {
+    const t = setupF3c({}, async () => {
+      throw new Error('warp caído');
+    });
+    await trigger(t);
+    expect(t.ctl.getState()).toBe('captured');
+    const photo = t.events.captured[0] as CapturedF3c;
+    expect(photo.warped).toBeNull();
+    expect(photo.warpW).toBe(0);
+    expect(photo.warpH).toBe(0);
+    expect(t.events.retries).toEqual([]);
+  });
+
+  it('warp null (sin worker) → warped null y captured igual', async () => {
+    const t = setupF3c({}, async () => null);
+    await trigger(t);
+    expect(t.ctl.getState()).toBe('captured');
+    expect((t.events.captured[0] as CapturedF3c).warped).toBeNull();
+  });
+
+  it('sin quad (ni foto ni prior) → warp NI SE PIDE', async () => {
+    const t = setupF3c({ detectPhoto: async () => null });
+    t.ctl.start(); // sin feed: lastCorners null → sin prior
+    expect(await t.ctl.captureManual()).toBe('captured');
+    expect(t.warps).toHaveLength(0);
+    const photo = t.events.captured[0] as CapturedF3c;
+    expect(photo.quad).toBeNull();
+    expect(photo.warped).toBeNull();
+  });
+});
+
+describe('F3-b: quad refinado en la captura', () => {
+  const REFINED = new Float32Array([0.21, 0.26, 0.79, 0.26, 0.79, 0.74, 0.21, 0.74]);
+
+  type CapturedF3b = {
+    quadRefined: Array<{ x: number; y: number }> | null;
+    needsEditorReview: boolean;
+    warped: unknown;
+  };
+
+  function setupF3b(
+    warpOut: {
+      refinedQuad: Float32Array | null;
+      refined: boolean;
+      fellBack: [boolean, boolean, boolean, boolean] | null;
+    },
+  ) {
+    const photoBmp = fakeBitmap();
+    const t = setup({
+      capturePhoto: async () => ({ bitmap: photoBmp, w: 3000, h: 4000, route: 'A' }),
+      downscale: async () => docSharp(),
+      photoProcessBitmap: async () => fakeBitmap(),
+      detectPhoto: async () => new Float32Array([0.2, 0.25, 0.8, 0.25, 0.8, 0.75, 0.2, 0.75]),
+      requestWarp: (async () => ({
+        bitmap: fakeBitmap(),
+        w: 1800,
+        h: 2000,
+        ...warpOut,
+      })) as OrchestratorDeps['requestWarp'],
+    });
+    return t;
+  }
+
+  async function trigger(t: { ctl: ScanOrchestrator; feed: (ts: number) => void }): Promise<void> {
+    t.ctl.start();
+    for (const ts of [0, 100, 200, 400, 600, 700]) t.feed(ts);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it('refine 4/4 → quadRefined en px de foto, sin marcar revisión', async () => {
+    const t = setupF3b({ refinedQuad: REFINED, refined: true, fellBack: [false, false, false, false] });
+    await trigger(t);
+    const photo = t.events.captured[0] as CapturedF3b;
+    expect(photo.warped).not.toBeNull();
+    expect(photo.quadRefined).not.toBeNull();
+    expect(photo.quadRefined!).toHaveLength(4);
+    // REFINED × foto 3000×4000
+    expect(photo.quadRefined![0]!.x).toBeCloseTo(630, 3);
+    expect(photo.quadRefined![0]!.y).toBeCloseTo(1040, 3);
+    expect(photo.needsEditorReview).toBe(false);
+  });
+
+  it('lado caído en el refine → needsEditorReview=true (blindaje 3)', async () => {
+    const t = setupF3b({ refinedQuad: REFINED, refined: true, fellBack: [false, false, true, false] });
+    await trigger(t);
+    const photo = t.events.captured[0] as CapturedF3b;
+    expect(photo.quadRefined).not.toBeNull();
+    expect(photo.needsEditorReview).toBe(true);
+  });
+
+  it('warp sin refine (null) → quadRefined null, revisión intacta', async () => {
+    const t = setupF3b({ refinedQuad: null, refined: false, fellBack: null });
+    await trigger(t);
+    const photo = t.events.captured[0] as CapturedF3b;
+    expect(photo.quadRefined).toBeNull();
+    expect(photo.needsEditorReview).toBe(false);
+  });
+});
+
+describe('cornerRefiner puro (ensamblado F3-b)', () => {
+  it('assemble válido: fracciones → px de foto + flags passthrough', () => {
+    const asm = assembleRefinedQuad(
+      {
+        refinedQuad: new Float32Array([0.2, 0.25, 0.8, 0.25, 0.8, 0.75, 0.2, 0.75]),
+        refined: true,
+        fellBack: [false, false, false, false],
+      },
+      3000,
+      4000,
+    );
+    expect(asm.refined).toBe(true);
+    expect(asm.fellBack).toEqual([false, false, false, false]);
+    // Fracciones en Float32: tolerancia (0.2 → 600.0000089, no exacto).
+    expect(asm.quad![0]!.x).toBeCloseTo(600, 3);
+    expect(asm.quad![0]!.y).toBeCloseTo(1000, 3);
+    expect(asm.quad![2]!.x).toBeCloseTo(2400, 3);
+    expect(asm.quad![2]!.y).toBeCloseTo(3000, 3);
+  });
+  it('assemble inválido (null / 7 floats / NaN / dims 0) → quad null sin lanzar', () => {
+    const bad7 = new Float32Array([0, 0, 1, 0, 1, 1, 0]);
+    expect(assembleRefinedQuad({ refinedQuad: null, refined: false, fellBack: null }, 3000, 4000).quad).toBeNull();
+    expect(assembleRefinedQuad({ refinedQuad: bad7, refined: true, fellBack: null }, 3000, 4000).quad).toBeNull();
+    const nan = new Float32Array([NaN, 0, 1, 0, 1, 1, 0, 1]);
+    expect(assembleRefinedQuad({ refinedQuad: nan, refined: true, fellBack: null }, 3000, 4000).quad).toBeNull();
+    const ok = new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]);
+    expect(assembleRefinedQuad({ refinedQuad: ok, refined: true, fellBack: null }, 0, 4000).quad).toBeNull();
+  });
+  it('needsEditorReview: null o algún true → true; 4/4 false → false', () => {
+    expect(needsEditorReview(null)).toBe(true);
+    expect(needsEditorReview([false, false, true, false])).toBe(true);
+    expect(needsEditorReview([true, true, true, true])).toBe(true);
+    expect(needsEditorReview([false, false, false, false])).toBe(false);
   });
 });
 

@@ -81,6 +81,34 @@ export interface ResultReply {
   ts: number;
 }
 
+/** UI → Worker: recortar la foto con el quad final (F3-c, PLAN_MAESTRO §F3).
+ *  `quad` = 8 floats (x,y × TL,TR,BR,BL) en FRACCIONES 0–1 de la foto (mismo
+ *  convenio que ResultReply.corners). `bitmap` viaja como TRANSFERABLE
+ *  (el worker lo cierra tras leerlo; el main thread pierde acceso). */
+export interface WarpRequest {
+  type: 'warp';
+  bitmap: ImageBitmap;
+  quad: Float32Array;
+  /** Timestamp del request (performance.now del main thread) para latencia. */
+  ts: number;
+}
+
+/** Worker → UI: página rectificada (F3-c). `bitmap` transferible de vuelta
+ *  (el main lo cierra al consumirlo). `w/h` = dims de salida del warp.
+ *  F3-b: `refinedQuad` = quad refinado en fracciones de foto (o el de entrada
+ *  si todo cayó); `refined` = algún lado se ajustó; `fellBack[4]` = lados
+ *  caídos al quad de entrada (blindaje 3, lo consume F4). */
+export interface WarpResult {
+  type: 'warped';
+  bitmap: ImageBitmap;
+  w: number;
+  h: number;
+  /** Eco del ts del request (cálculo de latencia en UI). */
+  ts: number;
+  refinedQuad: Float32Array | null;
+  refined: boolean;
+  fellBack: [boolean, boolean, boolean, boolean] | null;
+}
 /** Worker → UI: llegó un frame mientras procesaba → DESCARTADO (el descarte
  *  ES el mecanismo de backpressure; la UI además lo evita con su flag). */
 export interface BusyReply {
@@ -106,5 +134,5 @@ export interface ErrorMsg {
   message: string;
 }
 
-export type WorkerIn = DetectRequest;
-export type WorkerOut = ResultReply | BusyReply | BootMsg | ReadyMsg | ErrorMsg;
+export type WorkerIn = DetectRequest | WarpRequest;
+export type WorkerOut = ResultReply | WarpResult | BusyReply | BootMsg | ReadyMsg | ErrorMsg;

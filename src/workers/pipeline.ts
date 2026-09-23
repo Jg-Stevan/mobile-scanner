@@ -11,7 +11,13 @@
 // 480p de quality.ts) o del frame completo si no hay quad.
 
 import type { Quadrilateral } from '../core/types';
+import type { Corner } from '../core/types';
+import type { LineEq, RefineResult } from '../core/geometry';
+import { fitLineTrimmed, refineQuadFromLines } from '../core/geometry';
 import type { ScoredPoly } from '../core/quadSelect';
+import { computeBandRects } from '../core/cornerBands';
+import type { BandRect } from '../core/cornerBands';
+import { UNSHARP_AMOUNT, UNSHARP_KERNEL_SIZE, UNSHARP_RADIUS } from '../core/warp';
 import { scalePoly, selectQuad } from '../core/quadSelect';
 import type { RawQualityInput, ResultReply } from './protocol';
 import { withMats } from './withMats';
@@ -80,6 +86,29 @@ export interface CvApi {
   Laplacian(src: PipelineMat, dst: PipelineMat, depth: number): void;
   meanStdDev(src: PipelineMat, mean: PipelineMat, stddev: PipelineMat): void;
   roi(src: PipelineMat, rect: PipelineRect): PipelineMat;
+  /** F3-c (mínimo para warpPage, ni una más): interpolación cúbica del warp. */
+  readonly INTER_CUBIC: number;
+  /** H = quad src → quad dst (como cv.getPerspectiveTransform: RETORNA el Mat 3×3). */
+  getPerspectiveTransform(src: Quadrilateral, dst: Quadrilateral): PipelineMat;
+  warpPerspective(
+    src: PipelineMat,
+    dst: PipelineMat,
+    M: PipelineMat,
+    dsize: PipelineSize,
+    flags: number,
+  ): void;
+  addWeighted(
+    src1: PipelineMat,
+    alpha: number,
+    src2: PipelineMat,
+    beta: number,
+    gamma: number,
+    dst: PipelineMat,
+  ): void;
+  /** Píxeles RGBA del Mat (COPIA — la memoria WASM se reutiliza después). */
+  matDataRGBA(m: PipelineMat, w: number, h: number): Uint8ClampedArray;
+  /** Píxeles U8 de un canal del Mat (COPIA; p. ej. mapa Canny 0/255). */
+  matDataU8(m: PipelineMat, w: number, h: number): Uint8Array;
 }
 
 /** Umbrales de Canny (F1 Fase 0, benchmark sobre 6 fixtures sintéticos):
@@ -104,6 +133,11 @@ export const MIN_CONTOUR_AREA_PCT = 0.005;
  *  costo cero, no por ganancia esperada). selectQuad ya miraba top-5; el cap
  *  evita aproximar el resto. */
 export const MAX_CONTOUR_CANDIDATES = 8;
+
+/** F3-b (ingeniería): mínimo de píxeles de borde en una banda para ajustar su
+ *  recta. Menos que esto = banda sin información (borde fuera de banda o
+ *  ocluido) → lado caído al blindaje 3. */
+export const MIN_EDGE_POINTS = 20;
 
 function clampRect(
   x0: number,
@@ -229,4 +263,116 @@ export function processFrame(
       ts,
     };
   });
+}
+
+/** Rectifica la página (F3-c, PLAN_MAESTRO §F3): homografía quad→recto +
+ *  warpPerspective INTER_CUBIC + unsharp (amount/radius del core).
+ *  `quadPx` en PÍXELES de `foto`; salida `outW×outH` (dims de computeWarpDims).
+ *  Todos los Mats nacen dentro de withMats(). */
+export function warpPage(
+  cv: CvApi,
+  foto: ImageData,
+  quadPx: Quadrilateral,
+  outW: number,
+  outH: number,
+): ImageData {
+  return withMats((track) => {
+    const src = track(cv.matFromImageData(foto));
+    const M = track(
+      cv.getPerspectiveTransform(quadPx, [
+        { x: 0, y: 0 },
+        { x: outW, y: 0 },
+        { x: outW, y: outH },
+        { x: 0, y: outH },
+      ]),
+    );
+    const warped = track(cv.createMat());
+    cv.warpPerspective(src, warped, M, cv.createSize(outW, outH), cv.INTER_CUBIC);
+    const blur = track(cv.createMat());
+    cv.GaussianBlur(
+      warped,
+      blur,
+      cv.createSize(UNSHARP_KERNEL_SIZE, UNSHARP_KERNEL_SIZE),
+      UNSHARP_RADIUS,
+      UNSHARP_RADIUS,
+    );
+    const sharp = track(cv.createMat());
+    cv.addWeighted(warped, 1 + UNSHARP_AMOUNT, blur, -UNSHARP_AMOUNT, 0, sharp);
+    return {
+      width: outW,
+      height: outH,
+      data: cv.matDataRGBA(sharp, outW, outH),
+    } as ImageData;
+  });
+}
+
+/** Borde de un lado en coords de FOTO (salida de extractBandEdges). */
+export interface BandEdges {
+  side: 0 | 1 | 2 | 3;
+  points: Corner[];
+}
+
+/** Píxeles de borde (Canny 50/150, constantes F1) por banda, en coords de foto.
+ *  Muestreo con stride + cap derivado de MIN_EDGE_POINTS (×100): acota el costo
+ *  en bandas grandes sin nueva constante. Todos los Mats en withMats(). */
+export function extractBandEdges(
+  cv: CvApi,
+  foto: ImageData,
+  bands: BandRect[],
+): BandEdges[] {
+  return withMats((track) => {
+    const src = track(cv.matFromImageData(foto));
+    const gray = track(cv.createMat());
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    return bands.map((b) => {
+      const crop = track(cv.roi(gray, b));
+      const edges = track(cv.createMat());
+      cv.Canny(crop, edges, CANNY_LOW, CANNY_HIGH);
+      const px = cv.matDataU8(edges, b.width, b.height);
+      const cap = MIN_EDGE_POINTS * 100;
+      const stride = Math.max(1, Math.floor((b.width * b.height) / cap));
+      const points: Corner[] = [];
+      for (let i = 0; i < px.length; i += stride) {
+        if (px[i]! > 0) {
+          if (points.length >= cap) break;
+          points.push({ x: b.x + (i % b.width), y: b.y + Math.floor(i / b.width) });
+        }
+      }
+      return { side: b.side, points };
+    });
+  });
+}
+
+/** Línea degenerada: intersecciones siempre null → el blindaje 3 marca el lado
+ *  caído y cae a sus esquinas de entrada. (intersectLines: den=0 → null.) */
+const DEAD_LINE: LineEq = { a: 0, b: 0, c: 0 };
+
+/** Refinado fino del quad a resolución de foto (F3-b, blindajes 1-3 §F3):
+ *  bandas adaptativas (core) → bordes por banda → fitLineTrimmed (core, trim
+ *  por defecto) → refineQuadFromLines (core, fallback POR LADO). Banda sin
+ *  puntos suficientes o ajuste fallido → lado caído (DEAD_LINE). Sin bandas
+ *  (quad degenerado) → todo caído. NUNCA lanza con entrada finita. */
+export function refineQuad(
+  cv: CvApi,
+  foto: ImageData,
+  quadPx: Quadrilateral,
+): RefineResult {
+  const bands = computeBandRects(quadPx, foto.width, foto.height);
+  if (bands.length === 0) {
+    return { quad: quadPx, fellBack: [true, true, true, true] };
+  }
+  const edges = extractBandEdges(cv, foto, bands);
+  const bySide = new Map<number, Corner[]>();
+  for (const e of edges) bySide.set(e.side, e.points);
+  const lines: [LineEq, LineEq, LineEq, LineEq] = [DEAD_LINE, DEAD_LINE, DEAD_LINE, DEAD_LINE];
+  for (let s = 0; s < 4; s++) {
+    const pts = bySide.get(s) ?? [];
+    if (pts.length < MIN_EDGE_POINTS) continue;
+    try {
+      lines[s] = fitLineTrimmed(pts);
+    } catch {
+      // ajuste imposible → lado caído (el warp sigue con la entrada)
+    }
+  }
+  return refineQuadFromLines(lines[0], lines[1], lines[2], lines[3], quadPx);
 }

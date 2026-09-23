@@ -23,8 +23,9 @@ import {
   shouldTriggerShutter,
 } from '../core/quality';
 import { scaleQuad } from '../core/geometry';
-import type { DetectRequest, RawQualityInput } from '../workers/protocol';
+import type { DetectRequest, RawQualityInput, WarpRequest } from '../workers/protocol';
 import { computeProcessDims } from '../workers/protocol';
+import { assembleRefinedQuad, needsEditorReview } from './cornerRefiner';
 import { measureFrame, selectHint, underOverRatios } from './scoring';
 
 export type ScanState = 'idle' | 'detecting' | 'capturing' | 'revalidating' | 'captured';
@@ -55,6 +56,14 @@ export interface CapturedPhoto {
   ts: number;
   route: CaptureRouteTag;
   needsEditorReview: boolean;
+  /** Página rectificada (F3-c): null si no hubo quad o el warp falló — la
+   *  captura SIGUE con la cruda (F4 necesita bitmap+quad para re-warp). */
+  warped: ImageBitmap | null;
+  warpW: number;
+  warpH: number;
+  /** Quad refinado del WarpResult en coords de foto (F3-b; null si no hubo
+   *  warp o el worker no devolvió quad). `quad`/`quadPrior` NO cambian. */
+  quadRefined: Quadrilateral | null;
 }
 
 export interface ScoreView {
@@ -81,6 +90,20 @@ export interface OrchestratorDeps {
    *  corners en fracciones (o null). Default: null (sin worker cableado →
    *  fallback al prior). El cableado real UI→worker vive en la app. */
   detectPhoto(req: DetectRequest): Promise<Float32Array | null>;
+  /** Warp de la foto con el quad final (F3-c): recibe el WarpRequest y
+   *  resuelve el bitmap rectificado + dims, o null. Default: null (sin
+   *  worker cableado → la captura sigue con la cruda). CONTRATO DE CIERRE:
+   *  el dep puede TRANSFERIR/cerrar el bitmap recibido (el worker real lo
+   *  cierra); el cableado prod envía una copia (createImageBitmap) si el
+   *  crudo debe seguir vivo en CapturedPhoto.bitmap. */
+  requestWarp(req: WarpRequest): Promise<{
+    bitmap: ImageBitmap;
+    w: number;
+    h: number;
+    refinedQuad: Float32Array | null;
+    refined: boolean;
+    fellBack: [boolean, boolean, boolean, boolean] | null;
+  } | null>;
   /** Feedback de plataforma: 'haptic' si vibró, 'none' si debe flashear UI. */
   notify(kind: 'captured' | 'timeout'): 'haptic' | 'none';
 }
@@ -116,6 +139,15 @@ function fractionsToQuad(c: Float32Array, w: number, h: number): Quadrilateral {
     { x: c[4]! * w, y: c[5]! * h },
     { x: c[6]! * w, y: c[7]! * h },
   ];
+}
+
+function quadToFractions(q: Quadrilateral, w: number, h: number): Float32Array {
+  const out = new Float32Array(8);
+  for (let i = 0; i < 4; i++) {
+    out[2 * i] = q[i]!.x / w;
+    out[2 * i + 1] = q[i]!.y / h;
+  }
+  return out;
 }
 
 export interface OrchestratorOptions {
@@ -235,6 +267,7 @@ export class ScanOrchestrator {
         return crib(bitmap, { resizeWidth: w, resizeHeight: h, resizeQuality: 'low' });
       },
       detectPhoto: async () => null,
+      requestWarp: async () => null,
       notify: (kind: 'captured' | 'timeout') => {
         if (kind === 'timeout') return 'none'; // F2-b: vibración SOLO en captura (antes vibraba también en timeout cada 8s → indistinguible; toast ya avisa)
         try {
@@ -430,6 +463,7 @@ export class ScanOrchestrator {
       return 'retry';
     }
     const photoQuad = await this.redetectOnPhoto(winner.c);
+    const warped = await this.warpPhoto(winner.c, photoQuad.quad);
     this.setState('captured');
     this.deps.notify('captured');
     this.events.onCaptured({
@@ -441,7 +475,11 @@ export class ScanOrchestrator {
       revalScore: final.score,
       ts: this.deps.now(),
       route: winner.c.route,
-      needsEditorReview: photoQuad.needsEditorReview,
+      needsEditorReview: photoQuad.needsEditorReview || warped.refineNeedsReview,
+      warped: warped.bitmap,
+      warpW: warped.w,
+      warpH: warped.h,
+      quadRefined: warped.quadRefined,
     });
     this.stopTimer();
     this.cooldownTimer = setTimeout(() => {
@@ -509,6 +547,52 @@ export class ScanOrchestrator {
       };
     }
     return { quad: null, needsEditorReview: true };
+  }
+
+  /** F3-c: warp de la foto ganadora con el quad final (refinado por F3-b si
+   *  aterrizó; si no, el quad de foto tal cual — funciona en ambos casos).
+   *  Sin quad o warp caído → bitmap null y la captura SIGUE con la cruda.
+   *  NUNCA reintenta (evita bucle de capturas). */
+  private async warpPhoto(
+    c: BurstCandidate,
+    quad: Quadrilateral | null,
+  ): Promise<{
+    bitmap: ImageBitmap | null;
+    w: number;
+    h: number;
+    quadRefined: Quadrilateral | null;
+    refineNeedsReview: boolean;
+  }> {
+    const none = { bitmap: null, w: 0, h: 0, quadRefined: null, refineNeedsReview: false };
+    if (quad === null || !(c.w > 0) || !(c.h > 0)) return none;
+    for (let i = 0; i < 4; i++) {
+      if (!Number.isFinite(quad[i]!.x) || !Number.isFinite(quad[i]!.y)) {
+        return none;
+      }
+    }
+    try {
+      const r = await this.deps.requestWarp({
+        type: 'warp',
+        bitmap: c.bitmap,
+        quad: quadToFractions(quad, c.w, c.h),
+        ts: this.deps.now(),
+      });
+      if (r === null || r.bitmap === null) return none;
+      // F3-b: ensamblar el quad refinado; un lado caído marca revisión
+      // (blindaje 3: fallback + marcar para el editor). fellBack null = worker
+      // sin refine (sin info nueva) → el flag queda como lo dejó redetect
+      // (sin regresión vs F3-c); solo un reporte explícito marca revisión.
+      const asm = assembleRefinedQuad(r, c.w, c.h);
+      return {
+        bitmap: r.bitmap,
+        w: r.w,
+        h: r.h,
+        quadRefined: asm.quad,
+        refineNeedsReview: asm.fellBack !== null && needsEditorReview(asm.fellBack),
+      };
+    } catch {
+      return none; // worker caído → sigue la cruda
+    }
   }
 }
 

@@ -8,8 +8,10 @@
 // Nota de tipos: tsconfig solo incluye lib DOM (sin WebWorker), así que el
 // scope se declara mínimo aquí en vez de tocar la config global.
 
+import type { Quadrilateral } from '../core/types';
+import { computeWarpDims } from '../core/warp';
 import type { CvApi } from './pipeline';
-import { processFrame } from './pipeline';
+import { processFrame, refineQuad, warpPage } from './pipeline';
 import type { WorkerIn, WorkerOut } from './protocol';
 import { OPENCV_CDN_URL } from './protocol';
 
@@ -30,8 +32,8 @@ declare const self: WorkerScope & {
   [k: string]: unknown;
 };
 
-function post(msg: WorkerOut): void {
-  self.postMessage(msg);
+function post(msg: WorkerOut, transfer?: Transferable[]): void {
+  self.postMessage(msg, transfer);
 }
 
 /** Adapta el namespace cv global (any: OpenCV.js no trae tipos) a CvApi. */
@@ -41,7 +43,10 @@ function adaptCv(cv: {
   RETR_EXTERNAL: number;
   CHAIN_APPROX_SIMPLE: number;
   CV_64F: number;
+  CV_32F: number;
+  INTER_CUBIC: number;
   matFromImageData(img: ImageData): never;
+  matFromArray(rows: number, cols: number, type: number, arr: number[]): { delete(): void };
   Mat: new () => never;
   MatVector: new () => never;
   Size: new (w: number, h: number) => never;
@@ -55,6 +60,9 @@ function adaptCv(cv: {
   approxPolyDP(...a: never[]): void;
   Laplacian(...a: never[]): void;
   meanStdDev(...a: never[]): void;
+  getPerspectiveTransform(...a: never[]): never;
+  warpPerspective(...a: never[]): void;
+  addWeighted(...a: never[]): void;
 }): CvApi {
   return {
     COLOR_RGBA2GRAY: cv.COLOR_RGBA2GRAY,
@@ -87,12 +95,66 @@ function adaptCv(cv: {
       (m as unknown as { roi(rect: unknown): unknown }).roi(
         new cv.Rect(r.x, r.y, r.width, r.height),
       ) as ReturnType<CvApi['roi']>,
+    INTER_CUBIC: cv.INTER_CUBIC,
+    // Los Mats 4×2 temporales nacen y mueren AQUÍ (try/finally); el H
+    // retornado lo registra el llamador en withMats().
+    getPerspectiveTransform: (src, dst) => {
+      const flat = (q: Quadrilateral): number[] => [
+        q[0]!.x, q[0]!.y, q[1]!.x, q[1]!.y,
+        q[2]!.x, q[2]!.y, q[3]!.x, q[3]!.y,
+      ];
+      const s = cv.matFromArray(4, 2, cv.CV_32F, flat(src));
+      const d = cv.matFromArray(4, 2, cv.CV_32F, flat(dst));
+      try {
+        return cv.getPerspectiveTransform(s as never, d as never) as never as ReturnType<
+          CvApi['getPerspectiveTransform']
+        >;
+      } finally {
+        s.delete();
+        d.delete();
+      }
+    },
+    warpPerspective: (src, dst, M, dsize, flags) => {
+      // cv.Size es un objeto plano (sin .delete) — solo los Mats se borran.
+      const size = new cv.Size(dsize.width, dsize.height);
+      cv.warpPerspective(
+        src as never,
+        dst as never,
+        M as never,
+        size as never,
+        flags as never,
+      );
+    },
+    addWeighted: (s1, a, s2, b, g, dst) =>
+      cv.addWeighted(s1 as never, a as never, s2 as never, b as never, g as never, dst as never),
+    // COPIA a Uint8ClampedArray: el buffer WASM se reutiliza tras withMats().
+    matDataRGBA: (m, w, h) => {
+      const raw = (m as unknown as { data: Uint8Array }).data;
+      if (raw.length < w * h * 4) throw new Error('matDataRGBA: Mat menor que la salida');
+      return new Uint8ClampedArray(raw.slice(0, w * h * 4));
+    },
+    // COPIA U8 de un canal (mapa Canny 0/255): mismo buffer reutilizable.
+    matDataU8: (m, w, h) => {
+      const raw = (m as unknown as { data: Uint8Array }).data;
+      if (raw.length < w * h) throw new Error('matDataU8: Mat menor que la banda');
+      return raw.slice(0, w * h);
+    },
   };
 }
 
 let cvApi: CvApi | null = null;
 let busy = false;
 let canvas: OffscreenCanvas | null = null;
+let warpCanvas: OffscreenCanvas | null = null;
+
+/** Fracciones 0–1 bien formadas (copia local: el worker no importa de scan/). */
+function isFractions8(c: Float32Array | null | undefined): c is Float32Array {
+  if (c === null || c === undefined || c.length !== 8) return false;
+  for (let i = 0; i < 8; i++) {
+    if (!Number.isFinite(c[i])) return false;
+  }
+  return true;
+}
 
 post({ type: 'boot', pct: 5 });
 
@@ -116,6 +178,10 @@ try {
 
 self.onmessage = (ev: MessageEvent<WorkerIn>) => {
   const msg = ev.data;
+  if (msg.type === 'warp') {
+    handleWarp(msg);
+    return;
+  }
   if (msg.type !== 'detect') return;
   if (cvApi === null) return; // aún cargando: se descarta (backpressure total)
   if (busy) {
@@ -145,3 +211,83 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
     busy = false;
   }
 };
+
+/** Rama F3-c: rectifica la foto con el quad final. Mismo backpressure que
+ *  'detect' (busy → 'busy'; cv aún cargando → descarte). Un fallo NUNCA
+ *  congela el worker (lección F1-a: busy se resetea en finally, también en
+ *  'error' — el orquestador lo trata como warp nulo y sigue con la cruda). */
+function handleWarp(msg: Extract<WorkerIn, { type: 'warp' }>): void {
+  if (cvApi === null) return; // aún cargando: se descarta (backpressure total)
+  if (busy) {
+    post({ type: 'busy', ts: msg.ts });
+    return;
+  }
+  busy = true;
+  const bitmap = msg.bitmap;
+  try {
+    if (!isFractions8(msg.quad)) throw new Error('warp: quad no son 8 fracciones finitas');
+    if (!(bitmap.width > 0) || !(bitmap.height > 0)) throw new Error('warp: dims de foto inválidas');
+    if (canvas === null || canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+      canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    }
+    const ctx = canvas.getContext('2d');
+    if (ctx === null) throw new Error('OffscreenCanvas 2d null');
+    ctx.drawImage(bitmap, 0, 0);
+    const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    const quadPx: Quadrilateral = [
+      { x: msg.quad[0]! * bitmap.width, y: msg.quad[1]! * bitmap.height },
+      { x: msg.quad[2]! * bitmap.width, y: msg.quad[3]! * bitmap.height },
+      { x: msg.quad[4]! * bitmap.width, y: msg.quad[5]! * bitmap.height },
+      { x: msg.quad[6]! * bitmap.width, y: msg.quad[7]! * bitmap.height },
+    ];
+    // F3-b: refinado ANTES de la homografía (el bitmap ya está decodificado;
+    // un mensaje separado lo decodificaría dos veces). Si cae, sigue el quad
+    // de entrada (blindaje 3) — el refinado NUNCA falla el warp.
+    let refQuad = quadPx;
+    let fellBack: [boolean, boolean, boolean, boolean] = [true, true, true, true];
+    try {
+      const ref = refineQuad(cvApi, imageData, quadPx);
+      refQuad = ref.quad;
+      fellBack = ref.fellBack;
+    } catch {
+      // refine fuera de combate → entrada + 4/4 caído
+    }
+    const refined = fellBack.some((f) => !f);
+    const dims = computeWarpDims(refQuad);
+    const out = warpPage(cvApi, imageData, refQuad, dims.w, dims.h);
+    if (warpCanvas === null || warpCanvas.width !== dims.w || warpCanvas.height !== dims.h) {
+      warpCanvas = new OffscreenCanvas(dims.w, dims.h);
+    }
+    const octx = warpCanvas.getContext('2d');
+    if (octx === null) throw new Error('OffscreenCanvas destino 2d null');
+    octx.putImageData(out, 0, 0);
+    const outBitmap = warpCanvas.transferToImageBitmap();
+    const refinedQuad = new Float32Array(8);
+    for (let i = 0; i < 4; i++) {
+      refinedQuad[2 * i] = refQuad[i]!.x / bitmap.width;
+      refinedQuad[2 * i + 1] = refQuad[i]!.y / bitmap.height;
+    }
+    post(
+      {
+        type: 'warped',
+        bitmap: outBitmap,
+        w: dims.w,
+        h: dims.h,
+        ts: msg.ts,
+        refinedQuad,
+        refined,
+        fellBack: [...fellBack] as [boolean, boolean, boolean, boolean],
+      },
+      [outBitmap],
+    );
+  } catch (e) {
+    post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
+  } finally {
+    try {
+      bitmap.close();
+    } catch {
+      // bitmap ya cerrado/neutered: nada que hacer
+    }
+    busy = false;
+  }
+}
