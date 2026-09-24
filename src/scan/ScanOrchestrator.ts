@@ -22,13 +22,19 @@ import {
   detectionTimedOut,
   shouldTriggerShutter,
 } from '../core/quality';
-import { scaleQuad } from '../core/geometry';
+import { scaleQuad, validateQuad } from '../core/geometry';
 import type { DetectRequest, RawQualityInput, WarpRequest } from '../workers/protocol';
 import { computeProcessDims } from '../workers/protocol';
 import { assembleRefinedQuad, needsEditorReview } from './cornerRefiner';
 import { measureFrame, selectHint, underOverRatios } from './scoring';
 
-export type ScanState = 'idle' | 'detecting' | 'capturing' | 'revalidating' | 'captured';
+export type ScanState =
+  | 'idle'
+  | 'detecting'
+  | 'capturing'
+  | 'revalidating'
+  | 'captured'
+  | 'editing';
 
 export type CaptureRouteTag = 'A' | 'B' | 'burst';
 
@@ -64,6 +70,11 @@ export interface CapturedPhoto {
   /** Quad refinado del WarpResult en coords de foto (F3-b; null si no hubo
    *  warp o el worker no devolvió quad). `quad`/`quadPrior` NO cambian. */
   quadRefined: Quadrilateral | null;
+  /** Quad ajustado por el editor F4 en coords de foto (px). Ausente hasta que
+   *  el humano confirma un ajuste (submitEditedQuad). `quad`/`quadRefined`
+   *  NO cambian con el edit: el auto original sigue disponible para
+   *  dataCollect F6.5 (autoQuad = quadRefined ?? quad; regla anti-sesgo). */
+  adjustedQuad?: Quadrilateral;
 }
 
 export interface ScoreView {
@@ -119,6 +130,10 @@ export interface OrchestratorEvents {
   onState(state: ScanState): void;
   onScore(score: ScoreView): void;
   onCaptured(photo: CapturedPhoto): void;
+  /** F4: la captura se re-warped (ajuste del editor confirmado o revertido).
+   *  `photo` = copia actualizada de la captura (mismo bitmap, nuevo warped;
+   *  `adjustedQuad` presente solo si el humano confirmó). */
+  onEdited(photo: CapturedPhoto): void;
   onRetry(reason: string): void;
   onTimeout(): void;
 }
@@ -132,7 +147,10 @@ interface ScoreSample {
   score: number;
 }
 
-function fractionsToQuad(c: Float32Array, w: number, h: number): Quadrilateral {
+/** Fracciones 0–1 (Float32Array TL,TR,BR,BL) → quad EN PÍXELES (w×h).
+ *  Exportado para F4: el editor trabaja en fracciones y el FSM re-warpéa
+ *  con px→fracciones vía quadToFractions (mismos helpers que la detección). */
+export function fractionsToQuad(c: Float32Array, w: number, h: number): Quadrilateral {
   return [
     { x: c[0]! * w, y: c[1]! * h },
     { x: c[2]! * w, y: c[3]! * h },
@@ -141,7 +159,7 @@ function fractionsToQuad(c: Float32Array, w: number, h: number): Quadrilateral {
   ];
 }
 
-function quadToFractions(q: Quadrilateral, w: number, h: number): Float32Array {
+export function quadToFractions(q: Quadrilateral, w: number, h: number): Float32Array {
   const out = new Float32Array(8);
   for (let i = 0; i < 4; i++) {
     out[2 * i] = q[i]!.x / w;
@@ -171,6 +189,10 @@ export class ScanOrchestrator {
   /** Dims del frame que produjo lastCorners (para escalar el prior a la foto). */
   private lastFrameW = 0;
   private lastFrameH = 0;
+  /** Última captura aceptada (F4): la guarda el FSM para editar/re-warpéar.
+   *  Se reemplaza en cada captura nueva; nunca se muta el objeto emitido
+   *  (submitEditedQuad emite una COPIA actualizada). */
+  private currentPhoto: CapturedPhoto | null = null;
 
   constructor(opts: OrchestratorOptions = {}) {
     const video = opts.video;
@@ -285,6 +307,7 @@ export class ScanOrchestrator {
       onState: noop,
       onScore: noop,
       onCaptured: noop,
+      onEdited: noop,
       onRetry: noop,
       onTimeout: noop,
       ...opts.events,
@@ -308,6 +331,7 @@ export class ScanOrchestrator {
 
   stop(): void {
     this.stopTimer();
+    this.currentPhoto = null;
     this.setState('idle');
   }
 
@@ -379,6 +403,94 @@ export class ScanOrchestrator {
   async captureManual(): Promise<'captured' | 'retry' | 'busy'> {
     if (this.state !== 'detecting') return 'busy';
     return this.runBurst();
+  }
+
+  // --- F4: edición manual de esquinas (estado 'editing') ---
+
+  /** Abre el editor sobre la captura actual. SOLO desde 'captured' (la captura
+   *  debe existir y el cooldown estar corriendo). AL CANCELAR EL COOLDOWN:
+   *  el timer post-captura (ver armCooldown) se suspende mientras se edita —
+   *  el usuario no debe ser expulsado a 'detecting' a mitad de un ajuste. Al
+   *  salir del editor (submit/cancel) se re-arma el cooldown NORMAL completo. */
+  openEditor(): boolean {
+    if (this.state !== 'captured' || this.currentPhoto === null) return false;
+    this.stopTimer(); // cooldown suspendido en 'editing' (no corre)
+    this.setState('editing');
+    return true;
+  }
+
+  /** Confirma el quad ajustado por el humano (PÍXELES de foto, orden
+   *  TL,TR,BR,BL) → re-warp con ese quad (fracciones) → `onEdited` con la
+   *  captura actualizada (warped nuevo; `adjustedQuad` seteado; EL AUTO
+   *  quad/quadRefined NO cambia — evidencia para dataCollect F6.5, regla
+   *  anti-sesgo). El quad se valida con validateQuad (convexidad + área +
+   *  lados): inválido → 'invalid' y el FSM sigue 'editing' (el editor no
+   *  cierra). Tras el warp, la decisión de estado: no existe 'saved' en este
+   *  orquestador → la captura vuelve a 'captured' (con el warped actualizado)
+   *  y el cooldown NORMAL la devuelve a 'detecting' (mismo timer de runBurst;
+   *  ver exitEditingWithCooldown). */
+  async submitEditedQuad(quad: Quadrilateral): Promise<'ok' | 'invalid' | 'busy'> {
+    if (this.state !== 'editing' || this.currentPhoto === null) return 'busy';
+    const p = this.currentPhoto;
+    if (!validateQuad(quad, p.frameW, p.frameH)) return 'invalid';
+    const warped = await this.warpPhoto(p.bitmap, p.frameW, p.frameH, quad);
+    const updated: CapturedPhoto = {
+      ...p,
+      needsEditorReview: false, // el humano asumió la revisión (confirmó)
+      warped: warped.bitmap,
+      warpW: warped.w,
+      warpH: warped.h,
+      adjustedQuad: quad,
+      // quad/quadRefined se conservan como auto (no se re-asigna el refinado
+      // del re-warp: la evidencia "automática" no debe mezclarse con el ajuste).
+    };
+    this.currentPhoto = updated;
+    this.events.onEdited(updated);
+    this.exitEditingWithCooldown();
+    return 'ok';
+  }
+
+  /** Revierte el ajuste: re-warp con el quad automático ORIGINAL
+   *  (`quadRefined` si el worker refinó, si no `quad`) y emite `onEdited`;
+   *  `adjustedQuad` se descarta. El FSM SIGUE en 'editing' (el editor se
+   *  resetea a las esquinas auto y permite seguir ajustando). Devuelve false
+   *  si no hay quad automático (nada que re-warpéar — el editor muestra los
+   *  defaults 0.2 sin cambio de warp). */
+  async revertEditedQuad(): Promise<boolean> {
+    if (this.state !== 'editing' || this.currentPhoto === null) return false;
+    const p = this.currentPhoto;
+    const auto = p.quadRefined ?? p.quad;
+    if (auto === null) return false;
+    const warped = await this.warpPhoto(p.bitmap, p.frameW, p.frameH, auto);
+    const { adjustedQuad: _dropped, ...autoRest } = p;
+    void _dropped; // el ajuste se descarta al revertir (no llega al copy)
+    const updated: CapturedPhoto = {
+      ...autoRest,
+      needsEditorReview: p.needsEditorReview || warped.refineNeedsReview,
+      warped: warped.bitmap,
+      warpW: warped.w,
+      warpH: warped.h,
+      // quadRefined: conserva el del auto (evidencia).
+    };
+    this.currentPhoto = updated;
+    this.events.onEdited(updated);
+    return true;
+  }
+
+  /** Cierra el editor sin confirmar (sin re-warp). La captura conserva el
+   *  warped que tuviera; el cooldown normal la devuelve a 'detecting'. */
+  cancelEditing(): boolean {
+    if (this.state !== 'editing') return false;
+    this.exitEditingWithCooldown();
+    return true;
+  }
+
+  /** Salida del estado 'editing' → 'captured' + cooldown normal (decisión
+   *  documentada en submitEditedQuad: no hay estado 'saved'; ver también
+   *  plan maestro — F5 introducirá la cola multipágina con su estado). */
+  private exitEditingWithCooldown(): void {
+    this.setState('captured');
+    this.armCooldown();
   }
 
   private setState(s: ScanState): void {
@@ -463,10 +575,10 @@ export class ScanOrchestrator {
       return 'retry';
     }
     const photoQuad = await this.redetectOnPhoto(winner.c);
-    const warped = await this.warpPhoto(winner.c, photoQuad.quad);
+    const warped = await this.warpPhoto(winner.c.bitmap, winner.c.w, winner.c.h, photoQuad.quad);
     this.setState('captured');
     this.deps.notify('captured');
-    this.events.onCaptured({
+    const captured: CapturedPhoto = {
       bitmap: winner.c.bitmap,
       quad: photoQuad.quad,
       quadPrior: this.lastCorners,
@@ -480,7 +592,18 @@ export class ScanOrchestrator {
       warpW: warped.w,
       warpH: warped.h,
       quadRefined: warped.quadRefined,
-    });
+    };
+    this.currentPhoto = captured;
+    this.events.onCaptured(captured);
+    this.armCooldown();
+    return 'captured';
+  }
+
+  /** Cooldown post-captura anti doble-disparo (F2, spec Fase 3). Re-arma el
+   *  timer completo; al expirar (solo desde 'captured') vuelve a detecting.
+   *  Compartido por runBurst y la salida del editor F4 (la edición suspende
+   *  el cooldown en openEditor y lo re-arma al salir — misma ventana normal). */
+  private armCooldown(): void {
     this.stopTimer();
     this.cooldownTimer = setTimeout(() => {
       this.cooldownTimer = null;
@@ -490,7 +613,6 @@ export class ScanOrchestrator {
         this.setState('detecting');
       }
     }, this.cooldownMs);
-    return 'captured';
   }
 
   /** Revalidación a 400-clase (computeProcessDims 'preserve'): rankea los
@@ -551,10 +673,13 @@ export class ScanOrchestrator {
 
   /** F3-c: warp de la foto ganadora con el quad final (refinado por F3-b si
    *  aterrizó; si no, el quad de foto tal cual — funciona en ambos casos).
-   *  Sin quad o warp caído → bitmap null y la captura SIGUE con la cruda.
-   *  NUNCA reintenta (evita bucle de capturas). */
+   *  F4: reutilizado por submitEditedQuad/revertEditedQuad sobre el bitmap de
+   *  la captura (mismo camino, quad distinto). Sin quad -> bitmap null y la
+   *  captura sigue con la cruda. NUNCA reintenta (evita bucle de capturas). */
   private async warpPhoto(
-    c: BurstCandidate,
+    bitmap: ImageBitmap,
+    w: number,
+    h: number,
     quad: Quadrilateral | null,
   ): Promise<{
     bitmap: ImageBitmap | null;
@@ -564,7 +689,7 @@ export class ScanOrchestrator {
     refineNeedsReview: boolean;
   }> {
     const none = { bitmap: null, w: 0, h: 0, quadRefined: null, refineNeedsReview: false };
-    if (quad === null || !(c.w > 0) || !(c.h > 0)) return none;
+    if (quad === null || !(w > 0) || !(h > 0)) return none;
     for (let i = 0; i < 4; i++) {
       if (!Number.isFinite(quad[i]!.x) || !Number.isFinite(quad[i]!.y)) {
         return none;
@@ -573,8 +698,8 @@ export class ScanOrchestrator {
     try {
       const r = await this.deps.requestWarp({
         type: 'warp',
-        bitmap: c.bitmap,
-        quad: quadToFractions(quad, c.w, c.h),
+        bitmap,
+        quad: quadToFractions(quad, w, h),
         ts: this.deps.now(),
       });
       if (r === null || r.bitmap === null) return none;
@@ -582,7 +707,7 @@ export class ScanOrchestrator {
       // (blindaje 3: fallback + marcar para el editor). fellBack null = worker
       // sin refine (sin info nueva) → el flag queda como lo dejó redetect
       // (sin regresión vs F3-c); solo un reporte explícito marca revisión.
-      const asm = assembleRefinedQuad(r, c.w, c.h);
+      const asm = assembleRefinedQuad(r, w, h);
       return {
         bitmap: r.bitmap,
         w: r.w,

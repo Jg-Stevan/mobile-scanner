@@ -19,7 +19,7 @@ export interface QualityScore {
   sharpness: number;
   /** Exposición: distancia de percentiles 5/95 del histograma a un rango sano. */
   exposure: number;
-  /** Estabilidad: 1 − varianza normalizada de quads en ventana temporal de 300ms. */
+  /** Estabilidad: 1 − varianza normalizada de quads en ventana temporal de 600ms (F2-b). */
   stability: number;
   /** Excentricidad del quad: esquinas pegadas a bordes = territorio de distorsión de lente. */
   eccentricity: number;

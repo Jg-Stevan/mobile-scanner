@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { OrchestratorDeps } from '../src/scan/ScanOrchestrator';
 import { CAPTURE_COOLDOWN_MS, ScanOrchestrator } from '../src/scan/ScanOrchestrator';
 import { assembleRefinedQuad, needsEditorReview } from '../src/scan/cornerRefiner';
+import type { Quadrilateral } from '../src/core/types';
 import type { DetectRequest, RawQualityInput, WarpRequest } from '../src/workers/protocol';
 
 function fakeBitmap(): ImageBitmap & { closed: boolean } {
@@ -730,6 +731,235 @@ describe('cornerRefiner puro (ensamblado F3-b)', () => {
     expect(needsEditorReview([false, false, true, false])).toBe(true);
     expect(needsEditorReview([true, true, true, true])).toBe(true);
     expect(needsEditorReview([false, false, false, false])).toBe(false);
+  });
+});
+
+describe('F4: edición de esquinas (FSM editing)', () => {
+  const PHOTO_QUAD = new Float32Array([0.2, 0.25, 0.8, 0.25, 0.8, 0.75, 0.2, 0.75]);
+  const REFINED = new Float32Array([0.21, 0.26, 0.79, 0.26, 0.79, 0.74, 0.21, 0.74]);
+  // Quad del humano: TL=(600,1200) … BR=(2400,3000) en px de foto 3000×4000
+  // → fracciones [0.2,0.3, 0.8,0.3, 0.8,0.75, 0.2,0.75] y área 3.24M >
+  // 0.25·frame = 3M (validateQuad exige ≥25% del frame).
+  const ADJUSTED: Quadrilateral = [
+    { x: 600, y: 1200 },
+    { x: 2400, y: 1200 },
+    { x: 2400, y: 3000 },
+    { x: 600, y: 3000 },
+  ];
+  const TINY: Quadrilateral = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 100 },
+    { x: 0, y: 100 },
+  ];
+
+  type PhotoF4 = {
+    quad: Array<{ x: number; y: number }> | null;
+    quadRefined: Array<{ x: number; y: number }> | null;
+    adjustedQuad?: Array<{ x: number; y: number }>;
+    warped: (ImageBitmap & { closed: boolean }) | null;
+    needsEditorReview: boolean;
+  };
+
+  function setupF4(over: Partial<OrchestratorDeps> = {}) {
+    let now = 0;
+    const warps: WarpRequest[] = [];
+    const events = {
+      states: [] as string[],
+      captured: [] as unknown[],
+      edited: [] as unknown[],
+      retries: [] as string[],
+      timeouts: 0,
+    };
+    const deps: OrchestratorDeps = {
+      now: () => now,
+      sampleExposure: () => ({ hist: [...GOOD_HIST] }),
+      captureBurstFrames: async () => [
+        { bitmap: fakeBitmap(), w: 640, h: 480, route: 'B' },
+        { bitmap: fakeBitmap(), w: 640, h: 480, route: 'B' },
+      ],
+      capturePhoto: async () => ({ bitmap: fakeBitmap(), w: 3000, h: 4000, route: 'A' }),
+      downscale: async () => docSharp(),
+      photoProcessBitmap: async () => fakeBitmap(),
+      detectPhoto: async () => PHOTO_QUAD,
+      requestWarp: (async (req: WarpRequest) => {
+        warps.push(req);
+        return {
+          bitmap: fakeBitmap(),
+          w: 1800,
+          h: 2000,
+          refinedQuad: REFINED,
+          refined: true,
+          fellBack: [false, false, false, false],
+        };
+      }) as OrchestratorDeps['requestWarp'],
+      notify: () => 'haptic',
+      ...over,
+    };
+    const ctl = new ScanOrchestrator({
+      deps,
+      events: {
+        onState: (s) => events.states.push(s),
+        onScore: () => {},
+        onCaptured: (p) => events.captured.push(p),
+        onRetry: (r) => events.retries.push(r),
+        onTimeout: () => events.timeouts++,
+        onEdited: (p) => events.edited.push(p),
+      },
+      cooldownMs: 30,
+    });
+    const q: RawQualityInput = {
+      laplacianVar: 500,
+      cropMean: 128,
+      cropStdDev: 20,
+      frameW: 640,
+      frameH: 480,
+    };
+    return {
+      ctl,
+      events,
+      warps,
+      setNow: (t: number) => {
+        now = t;
+      },
+      feed: (ts: number, corners: Float32Array | null = CENTERED) => {
+        now = ts;
+        ctl.onWorkerResult(q, corners, ts);
+      },
+    };
+  }
+
+  async function capture(t: {
+    ctl: ScanOrchestrator;
+    feed: (ts: number, corners?: Float32Array | null) => void;
+  }): Promise<void> {
+    t.ctl.start();
+    for (const ts of [0, 100, 200, 400, 600, 700]) t.feed(ts);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  /** Compara fracciones (Float32Array) con números con tolerancia. */
+  function expectQuadClose(actual: Float32Array, expected: number[]): void {
+    expect(Array.from(actual)).toHaveLength(expected.length);
+    for (let i = 0; i < expected.length; i++) {
+      expect(actual[i]!).toBeCloseTo(expected[i]!, 3);
+    }
+  }
+
+  it('captura → openEditor true (solo desde captured); cooldown SUSPENDIDO en editing', async () => {
+    const t = setupF4();
+    await capture(t);
+    expect(t.ctl.getState()).toBe('captured');
+    expect(t.ctl.openEditor()).toBe(true);
+    expect(t.ctl.getState()).toBe('editing');
+    expect(t.events.states).toContain('editing');
+    t.setNow(5000); // muy por encima del cooldown 30ms…
+    await new Promise((r) => setTimeout(r, 40));
+    expect(t.ctl.getState()).toBe('editing'); // …pero nadie expulsa: timer suspendido
+  });
+
+  it('openEditor desde detecting → false (sin captura actual)', () => {
+    const t = setupF4();
+    t.ctl.start();
+    expect(t.ctl.getState()).toBe('detecting');
+    expect(t.ctl.openEditor()).toBe(false);
+  });
+
+  it('submitEditedQuad: re-warp con el ajustado, onEdited, auto intacto, cooldown normal', async () => {
+    const t = setupF4();
+    await capture(t);
+    expect(t.warps).toHaveLength(1); // warp de la captura (con PHOTO_QUAD)
+    expect(t.ctl.openEditor()).toBe(true);
+    expect(await t.ctl.submitEditedQuad(ADJUSTED)).toBe('ok');
+    // 2º warp = el ajuste en fracciones (TL,TR,BR,BL del humano)
+    expect(t.warps).toHaveLength(2);
+    expectQuadClose(t.warps[1]!.quad, [0.2, 0.3, 0.8, 0.3, 0.8, 0.75, 0.2, 0.75]);
+    // onEdited: captura corregida (ajustado + warped nuevo), auto conservado
+    expect(t.events.edited).toHaveLength(1);
+    const photo = t.events.edited[0] as PhotoF4;
+    expect(photo.adjustedQuad).toEqual(ADJUSTED);
+    expect(photo.warped).not.toBeNull();
+    expect(photo.needsEditorReview).toBe(false);
+    expect(photo.quadRefined).not.toBeNull(); // el auto NO se toca (anti-sesgo)
+    expect(photo.quadRefined![0]!.x).toBeCloseTo(630, 3); // REFINED × 3000×4000
+    // Estado: 'captured' (no existe 'saved') → cooldown normal → detecting
+    expect(t.ctl.getState()).toBe('captured');
+    await new Promise((r) => setTimeout(r, 40));
+    expect(t.ctl.getState()).toBe('detecting');
+  });
+
+  it('submitEditedQuad inválido (área < 25% frame) → invalid, sigue editing, sin warp', async () => {
+    const t = setupF4();
+    await capture(t);
+    t.ctl.openEditor();
+    expect(await t.ctl.submitEditedQuad(TINY)).toBe('invalid');
+    expect(t.ctl.getState()).toBe('editing');
+    expect(t.warps).toHaveLength(1); // sin re-warp
+    expect(t.events.edited).toHaveLength(0);
+  });
+
+  it('revertEditedQuad: re-warp con el AUTO (refinado), descarta el ajuste, sigue editing', async () => {
+    const t = setupF4();
+    await capture(t);
+    t.ctl.openEditor();
+    // (a) revert en frío: sin ajuste previo, re-warp con el quad del auto
+    expect(await t.ctl.revertEditedQuad()).toBe(true);
+    expect(t.ctl.getState()).toBe('editing'); // el editor NO se cierra
+    expectQuadClose(t.warps[1]!.quad, Array.from(REFINED));
+    expect((t.events.edited[0] as PhotoF4).adjustedQuad).toBeUndefined();
+    // (b) con ajuste confirmado: submit → cierra el editor → reabrir → revert
+    expect(await t.ctl.submitEditedQuad(ADJUSTED)).toBe('ok');
+    expect(t.ctl.getState()).toBe('captured'); // submit cierra el editor
+    expect(t.ctl.openEditor()).toBe(true);
+    expect(await t.ctl.revertEditedQuad()).toBe(true);
+    expect(t.warps).toHaveLength(4); // captura + revert-frío + submit + revert-2
+    expectQuadClose(t.warps[3]!.quad, Array.from(REFINED));
+    expect(t.events.edited).toHaveLength(3);
+    const photo = t.events.edited[2] as PhotoF4;
+    expect(photo.adjustedQuad).toBeUndefined(); // descartado al revertir
+    expect(photo.quadRefined![0]!.x).toBeCloseTo(630, 3); // evidencia auto intacta
+    expect(t.ctl.getState()).toBe('editing');
+  });
+
+  it('revert sin quad automático (captura sin detección) → false, sin warp ni evento', async () => {
+    const t = setupF4({ detectPhoto: async () => null });
+    t.ctl.start(); // sin feed: ni stream-prior habrá
+    expect(await t.ctl.captureManual()).toBe('captured');
+    const photo = t.events.captured[0] as PhotoF4;
+    expect(photo.quad).toBeNull();
+    expect(photo.quadRefined).toBeNull();
+    expect(t.ctl.openEditor()).toBe(true);
+    expect(await t.ctl.revertEditedQuad()).toBe(false); // nada que re-warpéar
+    expect(t.warps).toHaveLength(0);
+    expect(t.events.edited).toHaveLength(0);
+    expect(t.ctl.getState()).toBe('editing');
+  });
+
+  it('cancelEditing: sin re-warp ni evento; cooldown re-armado devuelve a detecting', async () => {
+    const t = setupF4();
+    await capture(t);
+    t.ctl.openEditor();
+    expect(t.ctl.cancelEditing()).toBe(true);
+    expect(t.ctl.getState()).toBe('captured');
+    expect(t.warps).toHaveLength(1);
+    expect(t.events.edited).toHaveLength(0);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(t.ctl.getState()).toBe('detecting');
+  });
+
+  it('captureManual + todos los métodos de edición fuera de editing → busy/false', async () => {
+    const t = setupF4();
+    await capture(t);
+    expect(t.ctl.getState()).toBe('captured');
+    expect(await t.ctl.captureManual()).toBe('busy');
+    expect(await t.ctl.submitEditedQuad(ADJUSTED)).toBe('busy');
+    expect(await t.ctl.revertEditedQuad()).toBe(false);
+    expect(t.ctl.cancelEditing()).toBe(false);
+    expect(t.events.edited).toHaveLength(0);
+    expect(t.warps).toHaveLength(1);
+    // en editing, el botón de captura NO dispara
+    t.ctl.openEditor();
+    expect(await t.ctl.captureManual()).toBe('busy');
   });
 });
 

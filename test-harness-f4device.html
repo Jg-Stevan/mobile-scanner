@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F4 — editor de esquinas + dataset + diana en dispositivo</title>
+<style>
+  body { font: 14px system-ui; background: #111; color: #ddd; margin: 0; padding: 12px; }
+  .vwrap { position: relative; width: 100%; max-width: 640px; }
+  video { width: 100%; display: block; background: #000; }
+  canvas.overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #ring { width: 84px; height: 84px; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+  button { font: inherit; padding: 10px 14px; margin: 4px 4px 4px 0; }
+  select { font: inherit; padding: 8px; }
+  #shutterBtn { font-size: 17px; }
+  #toast { font-weight: 700; color: #eab308; min-height: 20px; }
+  #err { color: #f87171; font-weight: 700; min-height: 20px; }
+  #thumb { border: 1px solid #444; max-width: 320px; }
+  #thumbLabel { font-weight: 700; color: #4c4; }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 8px 0; }
+  .metrics div { background: #222; padding: 6px 8px; border-radius: 6px; }
+  .metrics b { color: #4c4; }
+  pre { background: #000; padding: 8px; overflow: auto; max-height: 160px; }
+  /* Editor F4 (overlay) */
+  #editorRoot { position: fixed; inset: 0; background: rgba(0,0,0,0.82); display: flex;
+    flex-direction: column; align-items: center; justify-content: center; z-index: 50; }
+  #editorRoot[hidden] { display: none; }
+  #editorCanvas { width: min(96vw, 640px); height: min(62vh, 520px); background: #000;
+    touch-action: none; border-radius: 8px; }
+  #editorBtns { margin-top: 10px; }
+  .pill { background: #f59e0b; color: #111; border-radius: 999px; padding: 2px 10px;
+    font-weight: 700; }
+  .pill.ok { background: #22c55e; }
+  label.sw { display: inline-flex; gap: 6px; align-items: center; margin-right: 14px; }
+</style>
+</head>
+<body>
+<h1>F4 — editor de esquinas + dataset F6.5 + diana (harness temporal)</h1>
+<div class="vwrap">
+  <video id="v" playsinline muted autoplay></video>
+  <canvas id="ov" class="overlay" width="640" height="480"></canvas>
+</div>
+<div class="row">
+  <canvas id="ring" width="84" height="84"></canvas>
+  <div>
+    <button id="shutterBtn">📷 Shutter manual</button>
+    <button id="editBtn" disabled>✏️ Editar esquinas</button>
+    <button id="torchBtn">Torch: ?</button>
+  </div>
+</div>
+<div id="toast"></div>
+<div id="err"></div>
+<div class="metrics">
+  <div>Cámara: <b id="mCam">—</b></div>
+  <div>Estado: <b id="mState">—</b></div>
+  <div>FPS: <b id="mFps">—</b></div>
+  <div>Contornos: <b id="mCont">—</b></div>
+  <div>Capturas: <b id="mCap">0</b></div>
+  <div>Refinado: <b id="mRef">—</b></div>
+  <div>Salida: <b id="mOut">—</b></div>
+  <div>DPI (si carta): <b id="mDpi">—</b></div>
+  <div>Dataset: <b id="mDataset">off</b></div>
+  <div>Quota: <b id="mQuota">—</b></div>
+  <div>Diana CDE: <b id="mDiana">—</b></div>
+</div>
+<div><span id="thumbLabel">WARPED</span> (última captura):<br><canvas id="thumb" width="320" height="240"></canvas></div>
+<div class="row">
+  <button id="toggleBtn">Ver: WARPED</button>
+  <button id="dlBtn">Descargar PNG</button>
+</div>
+<div class="row">
+  <label class="sw"><input type="checkbox" id="collectorChk"> Colector dataset (opt-in,
+    default OFF)</label>
+  <select id="condSel" disabled>
+    <option value="normal">normal</option>
+    <option value="poca-luz">poca-luz</option>
+    <option value="fondo-claro">fondo-claro</option>
+    <option value="inclinado">inclinado</option>
+    <option value="sombra">sombra</option>
+  </select>
+  <button id="exportBtn" disabled>⬇️ Exportar ZIP</button>
+  <button id="clearBtn" disabled>🗑 Limpiar dataset</button>
+</div>
+<div class="row">
+  <label class="sw"><input type="checkbox" id="dianaChk"> Modo diana (autoQuad de cada
+    captura → CDE)</label>
+</div>
+<pre id="out">…</pre>
+
+<!-- Editor F4: overlay + canvas. El tamaño lo da el CSS; el canvas sincroniza
+     su backing store con clientWidth/Height en cada open(). -->
+<div id="editorRoot" hidden>
+  <canvas id="editorCanvas" width="320" height="240"></canvas>
+  <div class="row" id="editorBtns">
+    <button id="confirmBtn">✓ Confirmar</button>
+    <button id="revertBtn">↺ Volver a auto</button>
+    <button id="cancelBtn">✕ Cancelar</button>
+  </div>
+  <div style="max-width:640px;color:#bbb;font-size:12px;text-align:center">
+    Arrastra las 4 esquinas (≥44px táctiles). El círculo 3× amplía mientras
+    arrastras. Badge ámbar en el lado que el refiner marcó para revisión.
+  </div>
+</div>
+
+<script type="module">
+import { startFrameLoop } from './src/camera/frameLoop.ts';
+import { CameraController } from './src/camera/CameraController.ts';
+import { ScannerView, shouldSuggestPortrait, PORTRAIT_HINT } from './src/ui/ScannerView.ts';
+import { ScoreView } from './src/ui/ScoreView.ts';
+import { ScanOrchestrator } from './src/scan/ScanOrchestrator.ts';
+import { AdjustEditor } from './src/ui/AdjustEditor.ts';
+import { DatasetStore, openDatasetDB, persistDatasetStorage } from './src/export/datasetStore.ts';
+import { cdeReport } from './src/core/dianaMath.ts';
+import { CONDITION_TAGS } from './src/core/dataCollect.ts';
+
+const $ = (id) => document.getElementById(id);
+const toast = (s) => { $('toast').textContent = s; };
+const showErr = (s) => { $('err').textContent = s; };
+let toastTimer = 0;
+
+async function main() {
+  const video = $('v');
+  const ctl = CameraController.browser();
+  const profile = await ctl.init({ video });
+  await video.play();
+  $('mCam').textContent = `${profile.label} (${profile.trackWidth}×${profile.trackHeight})`;
+
+  // Worker del STREAM (frameLoop lo posee: sobrescribe su onmessage).
+  const worker = new Worker(new URL('./src/workers/detection.worker.ts', import.meta.url));
+  await new Promise((resolve, reject) => {
+    const to = setTimeout(() => reject(new Error('worker timeout')), 90000);
+    worker.onmessage = (ev) => {
+      if (ev.data && ev.data.type === 'ready') { clearTimeout(to); resolve(); }
+      if (ev.data && ev.data.type === 'error') { clearTimeout(to); reject(new Error(ev.data.message)); }
+    };
+  });
+
+  // Segundo worker SOLO para foto (re-detección + refine + warp).
+  const photoWorker = new Worker(new URL('./src/workers/detection.worker.ts', import.meta.url));
+  await new Promise((resolve, reject) => {
+    const to = setTimeout(() => reject(new Error('photo worker timeout')), 90000);
+    photoWorker.onmessage = (ev) => {
+      if (ev.data && ev.data.type === 'ready') { clearTimeout(to); resolve(); }
+      if (ev.data && ev.data.type === 'error') { clearTimeout(to); reject(new Error(ev.data.message)); }
+    };
+  });
+  const pending = new Map();
+  photoWorker.onmessage = (ev) => {
+    const m = ev.data;
+    if (!m) return;
+    if (m.type === 'result' || m.type === 'warped') {
+      const r = pending.get(m.ts);
+      if (r) { pending.delete(m.ts); r(m); }
+    } else if (m.type === 'busy') {
+      const r = pending.get(m.ts);
+      if (r) { pending.delete(m.ts); showErr(`Foto: worker ocupado (busy ts=${m.ts}) → fallback`); r(null); }
+    } else if (m.type === 'error') {
+      showErr(`Worker: ${m.message}`);
+      for (const r of pending.values()) r(null);
+      pending.clear();
+    }
+  };
+  const OP_TIMEOUT = 20000;
+  const postPhoto = (msg, transfer) => new Promise((resolve) => {
+    const to = setTimeout(() => {
+      pending.delete(msg.ts);
+      showErr(`Foto: sin respuesta en ${OP_TIMEOUT}ms (ts=${msg.ts}) → fallback`);
+      resolve(null);
+    }, OP_TIMEOUT);
+    pending.set(msg.ts, (m) => { clearTimeout(to); resolve(m); });
+    photoWorker.postMessage(msg, transfer);
+  });
+
+  const view = new ScannerView(video, $('ov'));
+  const scoreView = new ScoreView($('ring'));
+  let results = 0;
+  let captures = 0;
+  const tStart = performance.now();
+
+  let last = null; // CapturedPhoto + warped de la última captura
+  let lastWarpMeta = null; // { refined, fellBack } del dep requestWarp
+  let showWarped = true;
+  const dlCanvas = document.createElement('canvas');
+  const drawFit = (canvas, bitmap, label) => {
+    const maxW = 320;
+    const s = Math.min(1, maxW / bitmap.width);
+    canvas.width = Math.max(1, Math.round(bitmap.width * s));
+    canvas.height = Math.max(1, Math.round(bitmap.height * s));
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    if (label) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, canvas.height - 22, canvas.width, 22);
+      ctx.fillStyle = '#4c4';
+      ctx.font = '14px system-ui';
+      ctx.fillText(label, 8, canvas.height - 6);
+    }
+  };
+  const renderLast = () => {
+    if (!last) return;
+    const useWarped = showWarped && last.warped;
+    const bmp = useWarped ? last.warped : last.bitmap;
+    drawFit($('thumb'), bmp, useWarped ? null : 'SIN WARP (fallback)');
+    $('thumbLabel').textContent = useWarped ? 'WARPED' : 'CRUDO';
+    $('toggleBtn').textContent = `Ver: ${useWarped ? 'WARPED' : 'CRUDO'}`;
+    dlCanvas.width = bmp.width;
+    dlCanvas.height = bmp.height;
+    dlCanvas.getContext('2d').drawImage(bmp, 0, 0);
+  };
+
+  // --------------------------------------------------------------------
+  // F4: colector de dataset (opt-in OFF por defecto — orden F4 punto 3)
+  // --------------------------------------------------------------------
+  let store = null;
+  let collectorOn = false;
+  let lastStoreId = null; // id del registro vigente para addAdjusted()
+  const ensureStore = async () => {
+    if (store) return store;
+    const idb = await openDatasetDB();
+    store = new DatasetStore(idb, {
+      device: {
+        platform: /iPhone|iPad|iPod/.test(navigator.userAgent) ? 'ios' : 'other',
+        trackW: profile.trackWidth,
+        trackH: profile.trackHeight,
+      },
+    });
+    return store;
+  };
+  const refreshDatasetUi = async () => {
+    if (!store) { $('mDataset').textContent = 'off'; return; }
+    const n = await store.count();
+    const q = await store.quota();
+    $('mDataset').textContent = `${n}/300${collectorOn ? '' : ' (pausado)'}`;
+    $('mQuota').textContent = q.warn ? `⚠ ${Math.round(q.pct * 100)}% cuota` : `—`;
+    $('exportBtn').disabled = n === 0;
+    $('clearBtn').disabled = n === 0;
+  };
+  const lastCondicion = () => $('condSel').value;
+
+  // --------------------------------------------------------------------
+  // F4: diana (CDE sobre autoQuad de cada captura)
+  // --------------------------------------------------------------------
+  let dianaOn = false;
+  const dianaQuads = []; // quads px de foto (auto) con modo diana activo
+  const renderDiana = () => {
+    const r = cdeReport(dianaQuads);
+    $('mDiana').textContent = r
+      ? `±${r.p95mm.toFixed(2)} mm al 95% (${r.count})`
+      : `falta ≥2 (${dianaQuads.length} guardadas)`;
+  };
+
+  // --------------------------------------------------------------------
+  // F4: editor de esquinas (overlay)
+  // --------------------------------------------------------------------
+  const editor = new AdjustEditor({
+    root: $('editorRoot'),
+    canvas: $('editorCanvas'),
+    callbacks: {
+      onConfirm: (quad) => {
+        void orch.submitEditedQuad(quad).then((r) => {
+          if (r === 'invalid') { toast('Quad inválido (área/convexidad) — corrige las esquinas'); return; }
+          if (r === 'busy') toast('FSM ocupado — reintenta');
+        });
+      },
+      onRevert: () => {
+        // Re-warp con el auto + reset de los handles a las esquinas automáticas.
+        void orch.revertEditedQuad().then((ok) => {
+          if (!ok) { toast('Sin quad automático que revertir'); return; }
+          void editor.open(last, lastWarpMeta ? lastWarpMeta.fellBack : null);
+        });
+      },
+    },
+  });
+  $('confirmBtn').onclick = () => editor.onConfirm();
+  $('revertBtn').onclick = () => editor.onRevert();
+  $('cancelBtn').onclick = () => { orch.cancelEditing(); editor.close(); };
+
+  const orch = new ScanOrchestrator({
+    video,
+    deps: {
+      capturePhoto: async () => {
+        const w = video.videoWidth;
+        const h = video.videoHeight;
+        if ('ImageCapture' in window) {
+          try {
+            const stream = video.srcObject;
+            const track = stream.getVideoTracks()[0];
+            const blob = await new ImageCapture(track).takePhoto();
+            const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+            return { bitmap, w: bitmap.width, h: bitmap.height, route: 'A' };
+          } catch {
+            // fallback a B abajo
+          }
+        }
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(video, 0, 0, w, h);
+        const bitmap = await createImageBitmap(c);
+        return { bitmap, w, h, route: 'B' };
+      },
+      detectPhoto: async (req) => {
+        const m = await postPhoto(req, [req.bitmap]);
+        return m && m.type === 'result' ? m.corners : null;
+      },
+      requestWarp: async (req) => {
+        // Copia: el worker cierra lo transferido y el crudo debe seguir vivo (toggle).
+        const copy = await createImageBitmap(req.bitmap);
+        const m = await postPhoto({ ...req, bitmap: copy }, [copy]);
+        if (!m || m.type !== 'warped') return null;
+        // CapturedPhoto no trae refined/fellBack (src intocable): el harness guarda
+        // la meta de SU propio dep (capturas secuenciales → la última es la vigente).
+        lastWarpMeta = { refined: m.refined, fellBack: m.fellBack };
+        return {
+          bitmap: m.bitmap, w: m.w, h: m.h,
+          refinedQuad: m.refinedQuad, refined: m.refined, fellBack: m.fellBack,
+        };
+      },
+      notify: (kind) => {
+        if (kind === 'timeout') return 'none'; // F2-b: sin vibrar en timeout
+        try {
+          if (navigator.vibrate) navigator.vibrate(50);
+        } catch {
+          // sin vibrate: el flash igual se muestra
+        }
+        const ov = $('ov');
+        ov.style.boxShadow = 'inset 0 0 0 6px #22c55e';
+        setTimeout(() => { ov.style.boxShadow = 'none'; }, 250);
+        return 'none';
+      },
+    },
+    events: {
+      onState: (s) => {
+        $('mState').textContent = s;
+        $('editBtn').disabled = s !== 'captured';
+      },
+      onScore: (s) => scoreView.render(s.total, s.hint),
+      onCaptured: (p) => {
+        captures++;
+        $('mCap').textContent = String(captures);
+        if (last) {
+          try { last.warped && last.warped.close(); } catch { /* ya cerrado */ }
+        }
+        last = p;
+        renderLast();
+        const meta = lastWarpMeta;
+        const fbCount = meta && meta.fellBack ? meta.fellBack.filter((f) => f).length : null;
+        const refinedTxt = !p.warped
+          ? 'n/a (sin warp)'
+          : fbCount === null ? 'sí*' : fbCount === 0 ? 'sí (4/4)' : `parcial (${4 - fbCount}/4)`;
+        $('mRef').textContent = refinedTxt;
+        $('mOut').textContent = p.warped ? `${p.warpW}×${p.warpH}px` : '—';
+        $('mDpi').textContent = p.warped ? `~${Math.round(p.warpW / 8.5)} (si carta)` : '—';
+        $('out').textContent = JSON.stringify({
+          route: p.route,
+          reval: +p.revalScore.toFixed(1),
+          quadNull: p.quad === null,
+          quadRefinedNull: p.quadRefined === null,
+          adjusted: p.adjustedQuad !== undefined,
+          refined: meta ? meta.refined : null,
+          fellBack: meta ? meta.fellBack : null,
+          warpW: p.warpW,
+          warpH: p.warpH,
+          warpeado: p.warped !== null,
+          ts: p.ts,
+        }, null, 1);
+        // Dataset (solo si el humano optó en — F6.5, orden F4 punto 3):
+        // se registra TODA captura (anti-sesgo) con su autoQuad.
+        if (collectorOn) {
+          void (async () => {
+            try {
+              const st = await ensureStore();
+              // NUEVA captura → nuevo id (el ajuste de la anterior ya se registró).
+              lastStoreId = (await st.add(p, lastCondicion(), lastWarpMeta ? lastWarpMeta.fellBack : null)).id;
+              await refreshDatasetUi();
+            } catch (e) {
+              showErr(`Dataset: ${e.message}`);
+            }
+          })();
+        }
+        if (dianaOn) {
+          const aq = p.quadRefined ?? p.quad;
+          if (aq) {
+            dianaQuads.push(aq);
+            if (dianaQuads.length > 60) dianaQuads.shift();
+          }
+          renderDiana();
+        }
+      },
+      onEdited: (p) => {
+        // El humano ajustó: actualizar warped del toggle + registrar el ajuste
+        // (mismo id; el auto del registro NO cambia).
+        last = p;
+        renderLast();
+        if (collectorOn && lastStoreId !== null) {
+          void (async () => {
+            try {
+              const st = await ensureStore();
+              await st.addAdjusted(lastStoreId, p, lastCondicion(), lastWarpMeta ? lastWarpMeta.fellBack : null);
+              await refreshDatasetUi();
+            } catch (e) {
+              showErr(`Dataset: ${e.message}`);
+            }
+          })();
+        }
+      },
+      onRetry: (r) => toast(r),
+      onTimeout: () => {
+        toast('Activa la captura manual o mejora la iluminación');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast(''), 4000);
+      },
+    },
+  });
+  $('#editBtn').onclick = () => {
+    if (!last) return;
+    if (orch.openEditor()) {
+      void editor.open(last, lastWarpMeta ? lastWarpMeta.fellBack : null);
+    }
+  };
+
+  const loop = startFrameLoop({
+    video,
+    worker,
+    onStatus: (m) => showErr(`Stream: ${m.type}${m.message ? ' — ' + m.message : ''}`),
+    onResult: (q, ts, corners) => {
+      results++;
+      orch.onWorkerResult(q, corners, ts);
+      if (q.diag) $('mCont').textContent = String(q.diag.contourCount);
+      const hint = corners && shouldSuggestPortrait(corners, q.frameW, q.frameH) ? PORTRAIT_HINT : null;
+      view.render({ corners, valid: corners !== null }, q.frameW, q.frameH, hint);
+      if (results % 20 === 0) {
+        $('mFps').textContent = (results / ((performance.now() - tStart) / 1000)).toFixed(1);
+      }
+    },
+  });
+  orch.start();
+
+  let torchOn = false;
+  const capsTorch = profile.capabilities.torch;
+  $('torchBtn').textContent = capsTorch ? 'Torch: off' : 'Torch: n/a';
+  $('torchBtn').onclick = async () => {
+    if (!capsTorch) return;
+    const r = await ctl.setTorch(!torchOn);
+    if (r !== 'unsupported') torchOn = !torchOn;
+    $('torchBtn').textContent = `Torch: ${torchOn ? 'ON' : 'off'}`;
+  };
+  $('shutterBtn').onclick = () => { void orch.captureManual(); };
+  $('toggleBtn').onclick = () => { showWarped = !showWarped; renderLast(); };
+  $('dlBtn').onclick = () => {
+    if (!last) return;
+    dlCanvas.toBlob((blob) => {
+      if (!blob) return;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `f4-warp-${Date.now()}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }, 'image/png');
+  };
+
+  // Colector: opt-in explícito, default OFF (persist de IndexedDB en iOS —
+  // skill ios-camera-quirks §5-F5; aviso de cuota en refreshDatasetUi).
+  $('collectorChk').onchange = async (e) => {
+    collectorOn = e.target.checked;
+    $('condSel').disabled = !collectorOn;
+    if (collectorOn) {
+      await persistDatasetStorage(); // iOS: no purgar el dataset
+      await ensureStore();
+      await refreshDatasetUi();
+    } else {
+      lastStoreId = null;
+      await refreshDatasetUi();
+    }
+  };
+  $('exportBtn').onclick = async () => {
+    try {
+      const blob = await (await ensureStore()).exportDataset();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `f4-dataset-${Date.now()}.zip`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast('ZIP descargado: manifest.jsonl + photos/*.jpg');
+    } catch (e) {
+      showErr(`Export: ${e.message}`);
+    }
+  };
+  $('clearBtn').onclick = async () => {
+    if (!store) return;
+    await store.clear();
+    lastStoreId = null;
+    await refreshDatasetUi();
+    toast('Dataset limpiado');
+  };
+
+  // Modo diana: reporte CDE "±X mm al 95%" (la diana impresa se genera con
+  // node scripts/gen-diana.mjs e imprime a escala real).
+  $('dianaChk').onchange = (e) => {
+    dianaOn = e.target.checked;
+    if (!dianaOn) { dianaQuads.length = 0; }
+    renderDiana();
+  };
+  renderDiana();
+
+  window.__orch = orch;
+  window.__editor = editor;
+  window.__stats = () => loop.stats();
+  window.__dianaQuads = dianaQuads;
+  window.__tags = CONDITION_TAGS;
+}
+
+if (new URLSearchParams(location.search).get('autostart') === '1') main().catch((e) => {
+  document.getElementById('out').textContent = 'ERROR: ' + e.message;
+});
+</script>
+</body>
+</html>

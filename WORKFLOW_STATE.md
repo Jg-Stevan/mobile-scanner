@@ -1,6 +1,6 @@
 # WORKFLOW_STATE — mobile-scanner
 
-Última actualización: 2026-09-21
+Última actualización: 2026-09-24
 
 ## Tareas Completadas
 - **Adaptación del entorno** (PLAN_ADAPTACION Fases 0-5): 8 agentes globales, AGENTS.md,
@@ -129,12 +129,27 @@
   con entrada ±6px (error 400-clase) → refinado a 0.371px del GT (<1px).
   201/201 tests, tsc limpio. Estrés 10 min detect+refine+warp: 937502 iters,
   0 leaks, heap 13.2→9.0MB (APTO).
-- **F3-e en curso (código · 2026-09-23):** test humano halló warp caído 3/3 en SM-A566E
-  (`warpeado:false` — el fallback aguantó). Causa: `warpPage` retornaba objeto plano,
-  `putImageData` exige ImageData real (E2E Playwright+OpenCV 4.5.5 lo capturó). Fix:
-  `WarpPixels` plano + `createImageData` en el worker. E2E real GREEN (410×341 exacto,
-  esquina 237.3, refined 4/4) + estrés 10 min OpenCV real (9242 warps, 0 errores,
-  heap +1.22MB). Harness con panel de errores. ⏳ Falta re-test humano (warpeado:true).
+- **F3 COMPLETADA (código + validación humana 2 dispositivos · 2026-09-23):** warp + refiner
+  reales (`refined: true 4/4`, `warpeado: true` 3/3 en Samsung tras Fix 1 WarpPixels +
+  createImageData), auto-shutter con acta densa, iPhone OK, reproducibilidad geométrica
+  (acta 0.323/0.326; papel blanco 0.7727 = 8.5/11). F3-a re-detección · F3-b refiner
+  0.371px · F3-c warp · F3-d higiene · F3-e fix warp caído (E2E 410×341, estrés 9242
+  warps 0 errores) cerradas.
+- **F4 en curso (código · 2026-09-24):** editor manual de esquinas + dataset F6.5 +
+  diana. FSM `editing` en ScanOrchestrator (`openEditor`/`submitEditedQuad`/
+  `revertEditedQuad`/`cancelEditing`; `submit` ok → 'captured' + cooldown normal;
+  `revert` ok → sigue 'editing' con re-warp del auto; `CapturedPhoto.adjustedQuad`,
+  evento `onEdited`). `src/ui/AdjustEditor.ts` = DOM ligero sin global (fracciones
+  del original; `openPhoto` fabrica el layer de esquinas; hitTest + drag ≥44px +
+  lupa 3×; badge en lados con `fellBack`). `src/core/dataCollect.ts` +
+  `src/export/datasetStore.ts` (IndexedDB + ZIP con fflate aprobado;
+  TRAINING_JPEG_QUALITY=0.85; anti-sesgo: autoQuad SIEMPRE registrado,
+  `addAdjusted` mismo id sin re-encode; contador X/300; aviso cuota >70%; persist
+  en iOS) + `src/core/dianaMath.ts` (`cdeReport` "±X mm al 95%") +
+  `scripts/gen-diana.mjs` (diana Carta 190.5×254 mm imprimible, auto-chequeos OK).
+  Harness `test-harness-f4device.html` + build `f4/` (colector default OFF,
+  opt-in toggle, exportar ZIP, modo diana). 248/248 tests, tsc limpio. ⏳ Falta
+  validación humana en dispositivo físico (edición táctil + colector + diana).
 
 ## Operación del entorno (no-tareas — creada en F3-d)
 
@@ -174,8 +189,9 @@ de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
 - T4.1 `opencode mcp list` → 4/4 desde mobile-scanner — ⏳ **última pendiente** (CLI cuelga; visual TUI)
 
 ## Decisiones de Arquitectura
-- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F3 recorte preciso**
-  (F1 COMPLETADA código + humano en 2 dispositivos + D7; matriz congelada abajo)- **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
+- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F4 editor manual de
+  esquinas + dataset F6.5 + diana** (F1 COMPLETADA código + humano en 2
+  dispositivos + D7; matriz congelada abajo)- **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
   adaptación: T4.1 `opencode mcp list` en TUI.
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;
   aviso de cap >3500px añadido al log. Re-validado sin errores.
