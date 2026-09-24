@@ -254,13 +254,17 @@ function handleWarp(msg: Extract<WorkerIn, { type: 'warp' }>): void {
     }
     const refined = fellBack.some((f) => !f);
     const dims = computeWarpDims(refQuad);
-    const out = warpPage(cvApi, imageData, refQuad, dims.w, dims.h);
+    const pix = warpPage(cvApi, imageData, refQuad, dims.w, dims.h);
     if (warpCanvas === null || warpCanvas.width !== dims.w || warpCanvas.height !== dims.h) {
       warpCanvas = new OffscreenCanvas(dims.w, dims.h);
     }
     const octx = warpCanvas.getContext('2d');
     if (octx === null) throw new Error('OffscreenCanvas destino 2d null');
-    octx.putImageData(out, 0, 0);
+    // F3-e: warpPage retorna píxeles PLANOS (Node-testeable) — putImageData exige
+    // un ImageData con marca del canvas; se construye aquí, no en el pipeline.
+    const img = octx.createImageData(dims.w, dims.h);
+    img.data.set(pix.data);
+    octx.putImageData(img, 0, 0);
     const outBitmap = warpCanvas.transferToImageBitmap();
     const refinedQuad = new Float32Array(8);
     for (let i = 0; i < 4; i++) {

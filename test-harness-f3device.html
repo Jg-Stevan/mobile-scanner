@@ -36,6 +36,7 @@
   </div>
 </div>
 <div id="toast"></div>
+<div id="err" style="color:#f87171;font-weight:700;min-height:20px"></div>
 <div class="metrics">
   <div>Cámara: <b id="mCam">—</b></div>
   <div>Estado: <b id="mState">—</b></div>
@@ -61,6 +62,8 @@ import { ScanOrchestrator } from './src/scan/ScanOrchestrator.ts';
 
 const $ = (id) => document.getElementById(id);
 const toast = (s) => { $('toast').textContent = s; };
+// F3-e Fase 1: el fallo del worker NUNCA más silencioso — último error visible.
+const showErr = (s) => { $('err').textContent = s; };
 let toastTimer = 0;
 
 async function main() {
@@ -100,15 +103,20 @@ async function main() {
       if (r) { pending.delete(m.ts); r(m); }
     } else if (m.type === 'busy') {
       const r = pending.get(m.ts);
-      if (r) { pending.delete(m.ts); r(null); } // ocupado → fallback (filosofía F3-a)
+      if (r) { pending.delete(m.ts); showErr(`Foto: worker ocupado (busy ts=${m.ts}) → fallback`); r(null); }
     } else if (m.type === 'error') {
+      showErr(`Worker: ${m.message}`);
       for (const r of pending.values()) r(null); // 'error' no trae ts: cae lo en vuelo
       pending.clear();
     }
   };
   const OP_TIMEOUT = 20000;
   const postPhoto = (msg, transfer) => new Promise((resolve) => {
-    const to = setTimeout(() => { pending.delete(msg.ts); resolve(null); }, OP_TIMEOUT);
+    const to = setTimeout(() => {
+      pending.delete(msg.ts);
+      showErr(`Foto: sin respuesta en ${OP_TIMEOUT}ms (ts=${msg.ts}) → fallback`);
+      resolve(null);
+    }, OP_TIMEOUT);
     pending.set(msg.ts, (m) => { clearTimeout(to); resolve(m); });
     photoWorker.postMessage(msg, transfer);
   });
@@ -250,6 +258,7 @@ async function main() {
   const loop = startFrameLoop({
     video,
     worker,
+    onStatus: (m) => showErr(`Stream: ${m.type}${m.message ? ' — ' + m.message : ''}`),
     onResult: (q, ts, corners) => {
       results++;
       orch.onWorkerResult(q, corners, ts);

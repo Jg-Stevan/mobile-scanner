@@ -265,17 +265,26 @@ export function processFrame(
   });
 }
 
+/** Píxeles de salida del warp (plano: el worker los envuelve en ImageData real). */
+export interface WarpPixels {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+}
 /** Rectifica la página (F3-c, PLAN_MAESTRO §F3): homografía quad→recto +
  *  warpPerspective INTER_CUBIC + unsharp (amount/radius del core).
  *  `quadPx` en PÍXELES de `foto`; salida `outW×outH` (dims de computeWarpDims).
- *  Todos los Mats nacen dentro de withMats(). */
+ *  Todos los Mats nacen dentro de withMats().
+ *  Retorna píxeles PLANOS (NO un ImageData real: `putImageData` exige el objeto
+ *  con marca del canvas — lo construye el worker con `createImageData`; en Node
+ *  no existe el global ImageData y este módulo debe seguir siendo Node-testeable). */
 export function warpPage(
   cv: CvApi,
   foto: ImageData,
   quadPx: Quadrilateral,
   outW: number,
   outH: number,
-): ImageData {
+): WarpPixels {
   return withMats((track) => {
     const src = track(cv.matFromImageData(foto));
     const M = track(
@@ -302,7 +311,7 @@ export function warpPage(
       width: outW,
       height: outH,
       data: cv.matDataRGBA(sharp, outW, outH),
-    } as ImageData;
+    };
   });
 }
 

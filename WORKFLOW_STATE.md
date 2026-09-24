@@ -129,6 +129,12 @@
   con entrada ±6px (error 400-clase) → refinado a 0.371px del GT (<1px).
   201/201 tests, tsc limpio. Estrés 10 min detect+refine+warp: 937502 iters,
   0 leaks, heap 13.2→9.0MB (APTO).
+- **F3-e en curso (código · 2026-09-23):** test humano halló warp caído 3/3 en SM-A566E
+  (`warpeado:false` — el fallback aguantó). Causa: `warpPage` retornaba objeto plano,
+  `putImageData` exige ImageData real (E2E Playwright+OpenCV 4.5.5 lo capturó). Fix:
+  `WarpPixels` plano + `createImageData` en el worker. E2E real GREEN (410×341 exacto,
+  esquina 237.3, refined 4/4) + estrés 10 min OpenCV real (9242 warps, 0 errores,
+  heap +1.22MB). Harness con panel de errores. ⏳ Falta re-test humano (warpeado:true).
 
 ## Operación del entorno (no-tareas — creada en F3-d)
 
