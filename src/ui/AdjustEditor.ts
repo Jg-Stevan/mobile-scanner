@@ -253,11 +253,11 @@ export class AdjustEditor {
   }
 
   /** Confirma: convierte las fracciones actuales → px de foto y llama al
-   *  callback (el FSM re-warpéa con submitEditedQuad). Cierra el editor. */
+   *  callback (el FSM re-warpéa con submitEditedQuad). El cierre lo decide el
+   *  caller después de conocer el resultado. */
   onConfirm(): void {
     if (this.photo === null) return;
     this.callbacks.onConfirm(fractionsToQuadPx(this.fractions, this.photo.frameW, this.photo.frameH));
-    this.close();
   }
 
   /** Revierte: resetea los handles a las esquinas automáticas (ajustado no) y

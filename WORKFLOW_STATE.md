@@ -156,6 +156,12 @@
 **Regla:** "Tareas en Progreso" solo lista trabajo activo con spec; toda operación
 de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
 
+- **Higiene de deploy de harnesses F2/F3/F4 (2026-09-24):** al reconstruir un
+  harness, conservar al menos una generación previa de sus assets hasheados.
+  Los HTML cacheados pueden seguir resolviendo el bundle anterior mientras el
+  CDN expira; no borrar el asset previo durante el deploy.
+
+
 - **Sonda modelos-v2 (2026-09-22, re-clasificada en F3-d):** sonda de
   conectividad/modelos sin spec ni /ship — operación de infraestructura, no tarea
   de proyecto. Traza: `PLAN_EVIDENCE/sonda-modelos-v2.txt` (contenido `sonda-v2-ok`,

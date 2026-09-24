@@ -4,6 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>F4 — editor de esquinas + dataset + diana en dispositivo</title>
+<script>
+  (() => {
+    let startupError = '';
+    const showStartupError = (message) => {
+      startupError = `Arranque: ${message}`;
+      const err = document.getElementById('err');
+      if (err && !err.textContent) err.textContent = startupError;
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const err = document.getElementById('err');
+      if (err && !err.textContent && startupError) err.textContent = startupError;
+    });
+    window.onerror = (message) => showStartupError(message || 'error de carga');
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason = event.reason;
+      showStartupError(reason?.message || String(reason || 'promesa rechazada'));
+    });
+  })();
+</script>
 <style>
   body { font: 14px system-ui; background: #111; color: #ddd; margin: 0; padding: 12px; }
   .vwrap { position: relative; width: 100%; max-width: 640px; }
@@ -85,6 +104,9 @@
 <div class="row">
   <label class="sw"><input type="checkbox" id="dianaChk"> Modo diana (autoQuad de cada
     captura → CDE)</label>
+  <label>Ancho real impreso (mm):
+    <input id="dianaWidthMm" type="number" min="1" step="0.1" inputmode="decimal">
+  </label>
 </div>
 <pre id="out">…</pre>
 
@@ -111,13 +133,22 @@ import { ScoreView } from './src/ui/ScoreView.ts';
 import { ScanOrchestrator } from './src/scan/ScanOrchestrator.ts';
 import { AdjustEditor } from './src/ui/AdjustEditor.ts';
 import { DatasetStore, openDatasetDB, persistDatasetStorage } from './src/export/datasetStore.ts';
-import { cdeReport } from './src/core/dianaMath.ts';
+import { cdeReport, DIANA_DEFAULT_WIDTH_MM } from './src/core/dianaMath.ts';
 import { CONDITION_TAGS } from './src/core/dataCollect.ts';
 
 const $ = (id) => document.getElementById(id);
 const toast = (s) => { $('toast').textContent = s; };
 const showErr = (s) => { $('err').textContent = s; };
 let toastTimer = 0;
+const DIANA_WIDTH_STORAGE_KEY = 'f4:diana:anchoRealMm';
+const readDianaWidthMm = () => {
+  try {
+    const value = Number(localStorage.getItem(DIANA_WIDTH_STORAGE_KEY));
+    return Number.isFinite(value) && value > 0 ? value : DIANA_DEFAULT_WIDTH_MM;
+  } catch {
+    return DIANA_DEFAULT_WIDTH_MM;
+  }
+};
 
 async function main() {
   const video = $('v');
@@ -242,11 +273,14 @@ async function main() {
   // F4: diana (CDE sobre autoQuad de cada captura)
   // --------------------------------------------------------------------
   let dianaOn = false;
+  let dianaRealWidthMm = readDianaWidthMm();
+  const dianaWidthInput = $('dianaWidthMm');
+  dianaWidthInput.value = String(dianaRealWidthMm);
   const dianaQuads = []; // quads px de foto (auto) con modo diana activo
   const renderDiana = () => {
-    const r = cdeReport(dianaQuads);
+    const r = cdeReport(dianaQuads, dianaRealWidthMm);
     $('mDiana').textContent = r
-      ? `±${r.p95mm.toFixed(2)} mm al 95% (${r.count})`
+      ? `±${r.p95mm.toFixed(2)} mm al 95% (${r.count}; ancho ${dianaRealWidthMm} mm)`
       : `falta ≥2 (${dianaQuads.length} guardadas)`;
   };
 
@@ -260,7 +294,8 @@ async function main() {
       onConfirm: (quad) => {
         void orch.submitEditedQuad(quad).then((r) => {
           if (r === 'invalid') { toast('Quad inválido (área/convexidad) — corrige las esquinas'); return; }
-          if (r === 'busy') toast('FSM ocupado — reintenta');
+          if (r === 'busy') { toast('FSM ocupado — reintenta'); return; }
+          editor.close();
         });
       },
       onRevert: () => {
@@ -499,6 +534,21 @@ async function main() {
   $('dianaChk').onchange = (e) => {
     dianaOn = e.target.checked;
     if (!dianaOn) { dianaQuads.length = 0; }
+    renderDiana();
+  };
+  dianaWidthInput.onchange = () => {
+    const value = Number(dianaWidthInput.value);
+    if (!Number.isFinite(value) || value <= 0) {
+      showErr('Ancho real impreso: ingresa un valor mayor que 0');
+      dianaWidthInput.value = String(dianaRealWidthMm);
+      return;
+    }
+    dianaRealWidthMm = value;
+    try {
+      localStorage.setItem(DIANA_WIDTH_STORAGE_KEY, String(value));
+    } catch {
+      showErr('No se pudo persistir el ancho real en localStorage');
+    }
     renderDiana();
   };
   renderDiana();

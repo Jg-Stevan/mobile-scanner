@@ -19,6 +19,7 @@ import {
   loupeRect,
   previewDims,
   sideReviewBadges,
+  AdjustEditor,
 } from '../src/ui/AdjustEditor';
 import type { Quadrilateral } from '../src/core/types';
 
@@ -192,6 +193,54 @@ describe('F4 editor: loupe y badges', () => {
     expect(sideReviewBadges(null)).toEqual([true, true, true, true]);
     expect(sideReviewBadges([true, false, false, false])).toEqual([true, false, false, false]);
     expect(sideReviewBadges([false, false, false, false])).toEqual([false, false, false, false]);
+  });
+});
+
+describe('F4 editor: contrato de cierre', () => {
+  it('onConfirm entrega el quad y deja abierto el editor; close lo cierra', async () => {
+    const canvas = {
+      width: 320,
+      height: 240,
+      clientWidth: 320,
+      clientHeight: 240,
+      style: { touchAction: '' },
+      ownerDocument: { createElement: () => canvas },
+      getContext: () => ({
+        clearRect() {}, beginPath() {}, rect() {}, moveTo() {}, lineTo() {},
+        closePath() {}, fill() {}, stroke() {}, arc() {}, fillText() {},
+        save() {}, clip() {}, fillRect() {}, drawImage() {}, restore() {},
+      }),
+      addEventListener() {},
+      getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    };
+    const root = { hidden: true } as HTMLElement;
+    const confirmed: Quadrilateral[] = [];
+    const editor = new AdjustEditor({
+      root,
+      canvas: canvas as unknown as HTMLCanvasElement,
+      makePreview: async () => canvas as unknown as HTMLCanvasElement,
+      callbacks: {
+        onConfirm: (quad) => confirmed.push(quad),
+        onRevert: () => undefined,
+      },
+    });
+    const bitmap = {} as ImageBitmap;
+    const q = [
+      { x: 10, y: 20 }, { x: 290, y: 20 }, { x: 290, y: 220 }, { x: 10, y: 220 },
+    ] as Quadrilateral;
+    await editor.open({
+      bitmap,
+      quad: q,
+      quadRefined: null,
+      frameW: 300,
+      frameH: 200,
+    });
+    expect(root.hidden).toBe(false);
+    editor.onConfirm();
+    expect(confirmed).toHaveLength(1);
+    expect(root.hidden).toBe(false);
+    editor.close();
+    expect(root.hidden).toBe(true);
   });
 });
 
