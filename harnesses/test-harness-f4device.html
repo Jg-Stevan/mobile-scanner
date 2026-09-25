@@ -219,6 +219,10 @@ async function main() {
 
   let last = null; // CapturedPhoto + warped de la última captura
   let lastWarpMeta = null; // { refined, fellBack } del dep requestWarp
+  // FellBack VÁLIDO solo si la foto fue warpeada (hubo refine ESTA captura).
+  // Sin este guard, una captura sin detección/warp hereda la meta de la ANTERIOR
+  // (hallazgo del manifest ronda 1: registro con autoQuad null + fellBack stale).
+  const fbOf = (photo) => (photo && photo.warped && lastWarpMeta) ? lastWarpMeta.fellBack : null;
   let showWarped = true;
   const dlCanvas = document.createElement('canvas');
   const drawFit = (canvas, bitmap, label) => {
@@ -335,7 +339,7 @@ async function main() {
             return;
           }
           $('editorErr').textContent = '';
-          void editor.open(last, lastWarpMeta ? lastWarpMeta.fellBack : null);
+          void editor.open(last, fbOf(last));
         }).catch((e) => {
           const msg = `Revert: ${e.message}`;
           showErr(msg);
@@ -415,7 +419,7 @@ async function main() {
         }
         last = p;
         renderLast();
-        const meta = lastWarpMeta;
+        const meta = last.warped ? lastWarpMeta : null;
         const fbCount = meta && meta.fellBack ? meta.fellBack.filter((f) => f).length : null;
         const refinedTxt = !p.warped
           ? 'n/a (sin warp)'
@@ -443,7 +447,7 @@ async function main() {
             try {
               const st = await ensureStore();
               // NUEVA captura → nuevo id (el ajuste de la anterior ya se registró).
-              lastStoreId = (await st.add(p, lastCondicion(), lastWarpMeta ? lastWarpMeta.fellBack : null)).id;
+              lastStoreId = (await st.add(p, lastCondicion(), fbOf(p))).id;
               await refreshDatasetUi();
             } catch (e) {
               showErr(`Dataset: ${e.message}`);
@@ -468,7 +472,7 @@ async function main() {
           void (async () => {
             try {
               const st = await ensureStore();
-              await st.addAdjusted(lastStoreId, p, lastCondicion(), lastWarpMeta ? lastWarpMeta.fellBack : null);
+              await st.addAdjusted(lastStoreId, p, lastCondicion(), fbOf(p));
               await refreshDatasetUi();
             } catch (e) {
               showErr(`Dataset: ${e.message}`);
@@ -488,7 +492,7 @@ async function main() {
     if (!last) return;
     if (orch.openEditor()) {
       $('editorErr').textContent = ''; // limpiar error del overlay anterior
-      void editor.open(last, lastWarpMeta ? lastWarpMeta.fellBack : null);
+      void editor.open(last, fbOf(last));
     }
   };
 
