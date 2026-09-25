@@ -1,0 +1,34 @@
+{
+  "ts": 1790373334017,
+  "reference": "| ai LT L\nINN\n: 710007453010102 Var 01 Pag: 1 de2\n[my [=] ACTA DE ESCRUTINIO DE LOS\nEn a , JURADOS DE VOTACIÓN\nELECCIÓN PRESIDENCIA Y 4”\n| q VICEPRESIDENCIA DE LA REPÚBLICA Err]\n[=] Shag , JUNIO 21 DE 2026 REQISTRADUR(A\nCONSULADO: 88 - CONSULADOS\nPAÍS: 120 - ALEMANIA\nZONA: 15 PUESTO: 02 MESA: 012\nLUGAR: Frankfurt Consulado\nX 2-11-83-18 X\ní a NIVELACIÓN DELA MESA ©\nTOTAL VOTANTES FORMULARIO E-11 @ 4 4\nE TOTAL VOTOS EN LA URNA o 4 4\nE TOTAL VOTOS INCINERADOS\nal\nBL CANDIDATO SU AGRUPACIÓN 7 VOTACIÓN —\nES\nSe FY ly co 3\n| E dl RA ¡ruenecin o\nSo lly EEE =\nmea\nnr IVÁN CEPEDA CASTRO =\nde << e\nCAÍDA QUILCUE VIVAS\no ): A = +S PATRIA ,\n| ABELARDO DE LA ESPRILLA\n| JOSEMANUELRESTREPO -\n— AM\n| =\n|\n| EN BLANCO NULOS HO MARCA 90\nE\n—\nno romizao Km7as ee. Civ 1400 [i\nN | No. Form Di less. e\n",
+  "rows": [
+    {
+      "mode": "color",
+      "cer": 0.47083926031294454,
+      "referenceChars": 703,
+      "hypothesisChars": 740,
+      "text": "[4 | | I LT y I TE |\nIT\n| I L014 0 {ii\ns 710007453010102 Vor 01 Pag: 1 de2\ni [=]; ñ % [=] ACTA DE ESCRUTINIO DF LOS\nARE JURADOS DE VOTACION\n5 ELECCIÓN PRESIDENCIA Y £n\n4 VICEPRESIDENCIA DE LA REPÚBLICA Ne\n[=] Ea a JUNIO 21 DE 2026 REGISTRADURÍA\nCONSULADO: 88 - CONSULADOS\nPAÍS: 120 - ALEMANIA\nZONA: 15 PUESTO: 02 MESA: 012\nLUGAR: Frankfurt Consulado\nX 2-11-83-18 X\nTEE NIVELACIÓN DELAMESA ~~ |\n44\nof\n1 CANDIDATO EP AGRUPACIÓN: == VOTACIÓN *\ne | uu NW ==\nfat BY A HisTO RICO :\nv \\& ES Ea ¡EN ADCNA\n1g = Me 5 LA 2 3\nVANCEPEDA CASIRO == — E\nAÍDA QUILCUE VIVAS = >\n| 1 as a\n2 wo =\nA Fa\nal! | —- | & Lo EF > 2\nABELARDO DE LA ESPRIELLA a\ni [Jost MANUEL RESTREPO * >\nVOTOS EN BLANCO A ;\nE Se ; _\no VOTOS NULOS a\nly gv : | 4 a\nVOTOS NO MARCADOS |\n> ET SO a ren a\na SUMA TOTAL (CANDIDATOS + laa) 44 h\n| EN BLANCO + NULOS + NO MARCADOS) -— Voll\nuo e\nUno roma __ “mas 9 5 LB\n"
+    },
+    {
+      "mode": "gray",
+      "cer": 0.41536273115220484,
+      "referenceChars": 703,
+      "hypothesisChars": 679,
+      "text": "— da e\n| Sul | [TTT L\n- ADENTIAAMOO\n: 730007453010102 Ver: 01 Pag: 1 de2\nÍ Pa, ACTA DE ESCRUTINIO DE LOS FE 3\nSoph rhe Fi a\nSe El o 1.4 E\n« ú S| TT\nCRL TRANSMISIÓN [mae\n= eE ) ERUBLICA a L\nNS par k JUNIO 21 DE 2626 REGISTRADURÍA\nCONSULADO: 8 - CONSULADOS\nPAÍS: 420- ALEMANIA = ©\nZONA: 15 PUESTO: 02 MESA: 012\nLUGAR: Frankfurt Consulado a\nXoo 13-18 XX\nNIVELACIÓN DE LA MESA\n— TOTAL VOTANTES FORMULARIO E-11 ad 4\nL § — TOTAL VOTOS EN LA URNA o ar 2 >\nE rr orosinNERADOS - | AF E\nRN CANDIDATO —  - AGRUPACIÓN VOTACIÓN — J\nI — = o\nY 2) (4 NN E e E\n1 E HISTÓRICO . ==\n4 O <a Su = = 2 ene . => |\nid a 2\ncoil\n= lA a) a ——\nwg . FE A\n| JOSEMANUELIRESTRERO | a4\nfr ERE ¡BLANCO a oS\"\nales TURE 0 J -\nEl oTESNULOS\n= OTOS NOIMARCADOS be.\nTED rea\nraro ono | |\n[o KIT745 Civ i400: NNF\na EF C=\na | RR\n"
+    },
+    {
+      "mode": "bw",
+      "cer": 0.4096728307254623,
+      "referenceChars": 703,
+      "hypothesisChars": 689,
+      "text": "| : CT i\nIERIE EA pa\n710007453010102 Vor 01 Pan 1da2\nFocal ACTA DE ESCRUTINIO DE LOS GE]\nEA JURADOS DEVOTACIÓN | CAES\nhen eR I ATRANSMISIÓN\nEÉ ELECCIÓN PRESIDENCIA Y En\nH N VICEPRESIDENCIA DE LA REPÚBLICA E .\nDEA: N JUNIO 21 DE 2026 REGISTRADURÍA\nCONSULADO: 88 - CONSULADOS\nPAÍS: 120 - ALEMANIA\nZONA: 15 PUESTO: 02 MESA: 012\nLUGAR: Frankfurt Consulado\nX 2-11-83-18 X\n——— —— EEE O\nTOTAL VOTANTES FORMULARIO E-11 o 4 4\n° § 4\nMRE EC AND! DATO MUMIMISIA GRUP ACION MIMO TACIÓN MES\n5 7 a ARE St NETA\n<5; BM HISTÓRICO\n1 MEP «20 \"o 23\nIVÁN CEPEDA CASTRO\nAÍDA QUILCUÉ VIVAS\ned e AA I\nEZ\n>=, > EA rn\n2 CT 71\nABELARDO DE LA ESPRIELLA\nJOSÉ MANUEL RESTREPO\nSUMA TOTAL (CANDIDATOS + 0 4 4\nEN BLANCO + NULOS + NO MARCADOS)\n| e trom 74s KIT 745 Civ 1400 Eq\n"
+    },
+    {
+      "mode": "natural",
+      "cer": 0.3940256045519203,
+      "referenceChars": 703,
+      "hypothesisChars": 619,
+      "text": "E A —————\n- NOOO E\n| RMR\n: 710007453010102 Ver 01 Pag: 1 de2\n[Wek % [m] ACTA DE ESCRUTINIO DE LOS E-14 |\nLn a , JURADOS DE VOTACIÓN\nEÉ ELECCIÓN PRESIDENCIA Y £n\n|! VICEPRESIDENCIA DE LA REPÚBLICA La 3\n[=] s,s 3 JUNIO 21 DE 2026 REGISTRADURÍA\nCONSULADO: 88 - CONSULADOS\nPAÍS: 120 - ALEMANIA\nZONA: 15 PUESTO: 02 MESA: 012\nLUGAR: Frankfurt Consulado\nKE N-83-18 X\nnana eee NIVELACIÓN DE LA MESA”\ndf\nE\nA CANDIDATO = -' AGRUPACION - VOTACIÓN +\nol Ef HISTOR co\n1 MP a ee 2 >\nIVÁN CEPEDA CASTRO\nAÍDA QUILCUÉ VIVAS\nE e Va\n)< PE Et\n> YY. -\nABELARDO DE LA ESPRIELLA\nJOSÉ MANUEL RESTREPO\nVOTOS NO MARCADOS\nSUMA TOTAL (CANDIDATOS + 0 4 4\nEN BLANCO + NULOS + NO MARCADOS)\nJo rom 74s KIT 745 Civ:1100 |i\n"
+    }
+  ]
+}
