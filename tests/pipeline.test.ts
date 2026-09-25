@@ -14,7 +14,7 @@ import type {
 import type { Quadrilateral } from '../src/core/types';
 import { computeBandRects } from '../src/core/cornerBands';
 import { UNSHARP_AMOUNT, UNSHARP_KERNEL_SIZE, UNSHARP_RADIUS } from '../src/core/warp';
-import { APPROX_EPSILON_RATIO, CANNY_HIGH, CANNY_LOW, MAX_CONTOUR_CANDIDATES, MIN_EDGE_POINTS, processFrame, refineQuad, warpPage } from '../src/workers/pipeline';
+import { APPROX_EPSILON_RATIO, CANNY_HIGH, CANNY_LOW, MAX_CONTOUR_CANDIDATES, MIN_EDGE_POINTS, applyMode, processFrame, refineQuad, warpPage } from '../src/workers/pipeline';
 
 class MockMat implements PipelineMat {
   deleted = false;
@@ -461,5 +461,57 @@ describe('refineQuad (F3-b, blindajes 1-3)', () => {
     expect(unrefined).toBeGreaterThan(6); // el fixture sí simula el error 400-clase
     expect(r.fellBack).toEqual([false, false, false, false]);
     expect(refined).toBeLessThan(1);
+  });
+});
+
+describe('applyMode (enhance §5-F5 en pipeline, sin cv.Mat)', () => {
+  const px = (w: number, h: number, fill = 128): Uint8ClampedArray =>
+    new Uint8ClampedArray(w * h * 4).fill(fill);
+
+  it('bw → binario 0/255, alpha opaco, mismas dims', () => {
+    const out = applyMode(new MockCv(), px(16, 16), 'bw', 16, 16);
+    expect(out.width).toBe(16);
+    expect(out.height).toBe(16);
+    expect(out.data).toHaveLength(16 * 16 * 4);
+    for (let i = 0; i < out.data.length; i += 4) {
+      expect([0, 255]).toContain(out.data[i]); // R canal ya es el valor binario
+      expect(out.data[i + 1]).toBe(out.data[i]);
+      expect(out.data[i + 2]).toBe(out.data[i]);
+      expect(out.data[i + 3]).toBe(255);
+    }
+  });
+
+  it('gray → gris uniforme opaco (entrada uniforme 128)', () => {
+    const out = applyMode(new MockCv(), px(16, 16), 'gray', 16, 16);
+    expect(out.data).toHaveLength(16 * 16 * 4);
+    const [r, g, b, a] = out.data;
+    expect(r).toBe(g);
+    expect(g).toBe(b);
+    expect(a).toBe(255);
+  });
+
+  it('color y natural conservan dims y alpha de entrada (sin binario)', () => {
+    const cv = new MockCv();
+    const src = px(16, 16, 128);
+    for (const mode of ['color', 'natural'] as const) {
+      const out = applyMode(cv, src, mode, 16, 16);
+      expect(out.width).toBe(16);
+      expect(out.height).toBe(16);
+      expect(out.data).toHaveLength(16 * 16 * 4);
+      expect(out.data[3]).toBe(128); // gain preserva alpha (no es tone-map gris)
+      expect(out.data.every((v, i) => i % 4 === 3 || v >= 0 && v <= 255)).toBe(true);
+    }
+  });
+
+  it('dimensiones incoherentes → data vacía (validator)', () => {
+    expect(applyMode(new MockCv(), px(16, 16), 'bw', 32, 32).data.length).toBe(0);
+    expect(applyMode(new MockCv(), new Uint8ClampedArray(0), 'gray', 16, 16).data.length).toBe(0);
+  });
+
+  it('D-F5: NO crea Mat (el mock registra cero creations)', () => {
+    const cv = new MockCv();
+    applyMode(cv, px(16, 16), 'color', 16, 16);
+    expect(cv.mats.length).toBe(0);
+    expect(cv.allDeleted).toBe(true); // vacío por construcción
   });
 });

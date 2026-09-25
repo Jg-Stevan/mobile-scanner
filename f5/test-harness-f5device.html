@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F5 — multipágina + modos + PDF</title>
+<style>body{color:#ddd;background:#111;max-width:900px;margin:0;padding:12px;font:14px system-ui}h1{font-size:22px}h2{margin-top:24px;font-size:18px}button,select{font:inherit;margin:4px;padding:10px 12px}button:disabled{opacity:.45}.vwrap{width:100%;max-width:640px;position:relative}video{background:#000;width:100%;display:block}canvas.overlay{pointer-events:none;width:100%;height:100%;position:absolute;inset:0}.row{flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0;display:flex}#ring{width:84px;height:84px}#toast{color:#eab308;min-height:22px;font-weight:700}#err{color:#f87171;min-height:22px;font-weight:700}.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin:8px 0;display:grid}.metrics div{background:#222;border-radius:6px;padding:7px}.metrics b{color:#4c4}#thumb{border:1px solid #555;max-width:320px;max-height:320px}#gallery{background:#181818;border:1px solid #444;margin:8px 0;padding:8px}.pg-bar,.pg-grid{flex-wrap:wrap;align-items:center;gap:8px;display:flex}.pg-grid{margin-top:8px}.pg-thumb{touch-action:none;background:#292929;border:2px solid #555;padding:5px;position:relative}.pg-thumb canvas{max-width:160px;max-height:160px;display:block}.pg-del{padding:3px 7px;position:absolute;top:1px;right:1px}.pg-mode-tag{text-align:center;color:#9ca3af;font-size:11px}.pg-hint{color:#fbbf24;margin-top:8px}.pg-dragging{opacity:.7;border-color:#22c55e}pre{white-space:pre-wrap;background:#000;max-height:180px;padding:8px;overflow:auto}table{border-collapse:collapse;width:100%;margin:8px 0}th,td{text-align:left;border:1px solid #444;padding:7px}label{align-items:center;gap:5px;display:inline-flex}</style>
+  <script type="module" crossorigin src="./assets/test-harness-f5device-CwXs7Z1x.js"></script>
+</head>
+<body>
+<h1>F5 — multipágina + 4 modos + PDF</h1>
+<button id="startBtn">Iniciar cámara</button>
+<div class="row"><canvas id="ring" width="84" height="84"></canvas><div>
+<button id="shutterBtn" disabled>Shutter manual</button>
+<button id="torchBtn" disabled>Torch: ?</button>
+<button id="addBtn" disabled>Agregar al documento</button>
+</div></div>
+<div id="toast"></div>
+<div id="err"></div>
+<div class="vwrap">
+<video id="v" playsinline muted autoplay></video>
+<canvas id="ov" class="overlay" width="640" height="480"></canvas>
+</div>
+<div class="metrics">
+<div>Cámara: <b id="mCam">—</b></div>
+<div>Estado: <b id="mState">—</b></div>
+<div>FPS: <b id="mFps">—</b></div>
+<div>Contornos: <b id="mCont">—</b></div>
+<div>Capturas: <b id="mCap">0</b></div>
+<div>Refinado: <b id="mRef">—</b></div>
+<div>Salida: <b id="mOut">—</b></div>
+<div>Modo export: <b id="mMode">color</b></div>
+</div>
+<div><span id="thumbLabel">ÚLTIMA CAPTURA</span><br><canvas id="thumb" width="320" height="240"></canvas></div>
+<div class="row"><button id="pdfSizeBtn">Formato PDF: Letter</button><button id="pdfBtn">Exportar PDF</button><button id="refreshBtn">Actualizar galería</button></div>
+<div id="gallery"></div>
+
+<h2>Calibración CER (Tesseract, solo harness)</h2>
+<div class="row"><button id="cerBtn" disabled>Calibrar última captura</button><button id="cerJsonBtn" disabled>Descargar JSON</button></div>
+<div id="cerStatus">Captura una página y pulsa calibrar.</div>
+<table><thead><tr><th>Variante</th><th>CER vs OCR original</th><th>Caracteres ref/hip</th><th>Texto reconocido</th></tr></thead><tbody id="cerRows"></tbody></table>
+<pre id="out">…</pre>
+
+</body>
+</html>

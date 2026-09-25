@@ -11,9 +11,10 @@
 import type { Quadrilateral } from '../core/types';
 import { computeWarpDims } from '../core/warp';
 import type { CvApi } from './pipeline';
-import { processFrame, refineQuad, warpPage } from './pipeline';
-import type { WorkerIn, WorkerOut } from './protocol';
+import { applyMode, processFrame, refineQuad, warpPage } from './pipeline';
+import type { WorkerIn, WorkerOut, CvProbe } from './protocol';
 import { OPENCV_CDN_URL } from './protocol';
+import { enhanceMime, JPEG_QUALITY } from '../core/imageModes';
 
 // NOTA (T4): este worker se instancia como CLASSIC worker
 // (`new Worker(url)` sin type:module) porque OpenCV.js es UMD y se carga con
@@ -34,6 +35,17 @@ declare const self: WorkerScope & {
 
 function post(msg: WorkerOut, transfer?: Transferable[]): void {
   self.postMessage(msg, transfer);
+}
+
+function memorySnapshot(): { jsHeapBytes: number | null; wasmBytes: number | null } {
+  const perf = performance as Performance & {
+    memory?: { usedJSHeapSize?: number };
+  };
+  const memory = (cvRuntime as { memory?: { buffer?: ArrayBuffer } } | null)?.memory;
+  return {
+    jsHeapBytes: perf.memory?.usedJSHeapSize ?? null,
+    wasmBytes: memory?.buffer?.byteLength ?? null,
+  };
 }
 
 /** Adapta el namespace cv global (any: OpenCV.js no trae tipos) a CvApi. */
@@ -143,9 +155,49 @@ function adaptCv(cv: {
 }
 
 let cvApi: CvApi | null = null;
+let cvRuntime: unknown = null;
 let busy = false;
 let canvas: OffscreenCanvas | null = null;
 let warpCanvas: OffscreenCanvas | null = null;
+let enhanceCanvas: OffscreenCanvas | null = null;
+
+/** Sondeo de la superficie real de opencv.js cargado (D-F5). Verifica la
+ *  tesis del explorador ("opencv.js 4.5.5 NO expone createCLAHE ni
+ *  COLOR_*Lab; dilate/erode/divide/threshold tampoco de forma fiable") con
+ *  dato duro: el nombre existe (typeof function) o el código es número.
+ *  El RESULTADO viaja en 'ready' → reporte F5 (harness). */
+function probeCvSurface(cv: unknown): CvProbe {
+  const isFn = (k: string): boolean => {
+    const v = (cv as Record<string, unknown>)[k];
+    return typeof v === 'function';
+  };
+  const isNum = (k: string): boolean => {
+    const v = (cv as Record<string, unknown>)[k];
+    return typeof v === 'number';
+  };
+  return {
+    createCLAHE: isFn('createCLAHE'),
+    COLOR_RGBA2Lab: isNum('COLOR_RGBA2Lab'),
+    COLOR_RGB2Lab: isNum('COLOR_RGB2Lab'),
+    COLOR_Lab2RGB: isNum('COLOR_Lab2RGB'),
+    dilate: isFn('dilate'),
+    erode: isFn('erode'),
+    divide: isFn('divide'),
+    medianBlur: isFn('medianBlur'),
+    threshold: isFn('threshold'),
+    morphologyEx: isFn('morphologyEx'),
+    getStructuringElement: isFn('getStructuringElement'),
+    MORPH_RECT: isNum('MORPH_RECT'),
+    MORPH_CLOSE: isNum('MORPH_CLOSE'),
+    resize: isFn('resize'),
+    INTER_AREA: isNum('INTER_AREA'),
+    INTER_LINEAR: isNum('INTER_LINEAR'),
+    boxFilter: isFn('boxFilter'),
+    blur: isFn('blur'),
+    split: isFn('split'),
+    merge: isFn('merge'),
+  };
+}
 
 /** Fracciones 0–1 bien formadas (copia local: el worker no importa de scan/). */
 function isFractions8(c: Float32Array | null | undefined): c is Float32Array {
@@ -167,8 +219,9 @@ try {
       post({ type: 'error', message: 'opencv.js cargó pero `cv` es undefined' });
       return;
     }
+    cvRuntime = cv;
     cvApi = adaptCv(cv as Parameters<typeof adaptCv>[0]);
-    post({ type: 'ready' });
+    post({ type: 'ready', probe: probeCvSurface(cv) });
   };
   // importScripts es síncrono y no necesita CORS (script clásico).
   importScripts(OPENCV_CDN_URL);
@@ -180,6 +233,10 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
   const msg = ev.data;
   if (msg.type === 'warp') {
     handleWarp(msg);
+    return;
+  }
+  if (msg.type === 'enhance') {
+    handleEnhance(msg);
     return;
   }
   if (msg.type !== 'detect') return;
@@ -284,6 +341,70 @@ function handleWarp(msg: Extract<WorkerIn, { type: 'warp' }>): void {
       },
       [outBitmap],
     );
+  } catch (e) {
+    post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
+  } finally {
+    try {
+      bitmap.close();
+    } catch {
+      // bitmap ya cerrado/neutered: nada que hacer
+    }
+    busy = false;
+  }
+}
+
+/** Rama F5: aplica el modo (§5-F5) al warped y devuelve el Blob ENCODE
+ *  (mime según modo: jpeg q90 o png — §F5). Mismo backpressure (busy → 'busy',
+ *  cv aún cargando → descarte). NO usa cv.Mat (D-F5: todo el enhance es JS
+ *  puro en enhanceJs.ts; applyMode conserva `cv` en la firma por contrato). */
+async function handleEnhance(msg: Extract<WorkerIn, { type: 'enhance' }>): Promise<void> {
+  if (cvApi === null) return; // aún cargando: se descarta (backpressure total)
+  if (busy) {
+    post({ type: 'busy', ts: msg.ts });
+    return;
+  }
+  busy = true;
+  const startedAt = performance.now();
+  const bitmap = msg.bitmap;
+  try {
+    if (!(bitmap.width > 0) || !(bitmap.height > 0)) {
+      throw new Error('enhance: dims de warped inválidas');
+    }
+    if (canvas === null || canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+      canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    }
+    const ctx = canvas.getContext('2d');
+    if (ctx === null) throw new Error('OffscreenCanvas 2d null (enhance)');
+    ctx.drawImage(bitmap, 0, 0);
+    const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    const pix = applyMode(cvApi, imageData.data, msg.mode, bitmap.width, bitmap.height);
+    if (pix.data.length === 0) throw new Error('enhance: salida vacía (dims no cuadran)');
+    const mime = enhanceMime(msg.mode);
+    if (enhanceCanvas === null || enhanceCanvas.width !== bitmap.width || enhanceCanvas.height !== bitmap.height) {
+      enhanceCanvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    }
+    const octx = enhanceCanvas.getContext('2d');
+    if (octx === null) throw new Error('OffscreenCanvas destino 2d null (enhance)');
+    const img = octx.createImageData(bitmap.width, bitmap.height);
+    img.data.set(pix.data);
+    octx.putImageData(img, 0, 0);
+    // convertToBlob es async: el busy se libera tras el fetch del blob
+    // (el yoyo bitmap→canvas→blob es el único encode del pipeline F5).
+    const blob = await enhanceCanvas.convertToBlob({
+      type: mime,
+      quality: mime === 'image/jpeg' ? JPEG_QUALITY : undefined,
+    });
+    post({
+      type: 'enhanced',
+      blob,
+      mime,
+      w: bitmap.width,
+      h: bitmap.height,
+      mode: msg.mode,
+      elapsedMs: performance.now() - startedAt,
+      memory: memorySnapshot(),
+      ts: msg.ts,
+    });
   } catch (e) {
     post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
   } finally {

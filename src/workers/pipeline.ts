@@ -12,6 +12,7 @@
 
 import type { Quadrilateral } from '../core/types';
 import type { Corner } from '../core/types';
+import type { EnhanceMode } from '../core/types';
 import type { LineEq, RefineResult } from '../core/geometry';
 import { fitLineTrimmed, refineQuadFromLines } from '../core/geometry';
 import type { ScoredPoly } from '../core/quadSelect';
@@ -21,6 +22,7 @@ import { UNSHARP_AMOUNT, UNSHARP_KERNEL_SIZE, UNSHARP_RADIUS } from '../core/war
 import { scalePoly, selectQuad } from '../core/quadSelect';
 import type { RawQualityInput, ResultReply } from './protocol';
 import { withMats } from './withMats';
+import { enhanceToRgba } from './enhanceJs';
 
 /** Mat mínimo que usa el pipeline (cv.Mat real lo satisface). */
 export interface PipelineMat {
@@ -313,6 +315,40 @@ export function warpPage(
       data: cv.matDataRGBA(sharp, outW, outH),
     };
   });
+}
+
+/** Píxeles de salida del enhance (plano: el worker los envuelve en ImageData real). */
+export interface EnhancePixels {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+}
+
+/** Aplica un modo de la cola multipágina (§5-F5) al warped RGBA. DELEGA en
+ *  enhanceJs (JS puro dentro del worker — D-F5: opencv.js 4.5.5 no expone
+ *  CLAHE/LAB; ver enhanceJs.ts). El parámetro `cv` se conserva en la firma por
+ *  contrato (la api del worker es uniforme y permite swap futuro a cv.Mat sin
+ *  tocar protocolo); NO se usa hoy. NO crea Mat (withMats no se viola).
+ *  _cv:_ sin uso (D-F5). Valida dims: outW/outH deben ser las dims de source. */
+export function applyMode(
+  _cv: CvApi,
+  warped: Uint8ClampedArray | ImageData,
+  mode: EnhanceMode,
+  outW: number,
+  outH: number,
+): EnhancePixels {
+  const src =
+    warped instanceof Uint8ClampedArray
+      ? warped
+      : (warped as ImageData).data ?? new Uint8ClampedArray(0);
+  if (outW <= 0 || outH <= 0 || src.length < outW * outH * 4) {
+    return { width: outW, height: outH, data: new Uint8ClampedArray(0) };
+  }
+  return {
+    width: outW,
+    height: outH,
+    data: enhanceToRgba(src, outW, outH, mode),
+  };
 }
 
 /** Borde de un lado en coords de FOTO (salida de extractBandEdges). */

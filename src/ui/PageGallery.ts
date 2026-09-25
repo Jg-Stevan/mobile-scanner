@@ -1,0 +1,370 @@
+// src/ui/PageGallery.ts — galería multipágina (§5-F5). DOM FINO (patrón T5,
+// mismo esquema que AdjustEditor): contexto inyectado por constructor, la
+// matemática (relocate/thumbDims/umbral de arrastre) es PURA y vive en este
+// archivo para tests Node. Miniaturas ~200px (orden F5), reorder por arrastre
+// touch (pointer events, umbral 44px de touch — mismo EDITOR_TOUCH_PX que el
+// editor F4), delete, contador, selector GLOBAL de modo (per-page override
+// PROHIBIDO), Exportar PDF → navigator.share o download, aviso de cuota
+// (>70%, quotaReport de dataCollect) y recordatorio de exportar si quedan
+// páginas sin exportar.
+//
+// Constantes nuevas: NINGUNA de pipeline — solo la geometría UI "dada" por el
+// orden F5 (~200px miniaturas) y el umbral de 44px reutilizado de AdjustEditor.
+
+import type { EnhanceMode } from '../core/types';
+import { PDF_SIZE_LIMIT_BYTES } from '../export/pageStore';
+import type { PageRecord, PageStore } from '../export/pageStore';
+import { EDITOR_TOUCH_PX, previewDims } from './AdjustEditor';
+
+// ---------------------------------------------------------------------------
+// Matemática pura (tests Node)
+// ---------------------------------------------------------------------------
+
+/** Reordena una lista de ids: mueve el elemento `from` a la posición `to`
+ *  (índices de la lista, como la cola — mismas reglas que Array.prototype.splice
+ *  para tap/click: el destino es la posición en la lista ANTES de remover).
+ *  Índices inválidos → copia intacta. NO muta la entrada. */
+export function relocate(ids: readonly string[], from: number, to: number): string[] {
+  if (from < 0 || from >= ids.length) return [...ids];
+  const out = ids.slice();
+  const [moved] = out.splice(from, 1);
+  if (moved === undefined) return out;
+  const clamped = Math.max(0, Math.min(out.length, to));
+  out.splice(clamped, 0, moved);
+  return out;
+}
+
+/** Dims de la miniatura (contain, ~200px lado mayor — orden F5). Reutiliza
+ *  previewDims de AdjustEditor (misma geometría contain, sin duplicar). */
+export function thumbDims(w: number, h: number): { w: number; h: number } {
+  return previewDims(w, h, 200);
+}
+
+/** ¿Supera el movimiento de arrastre el umbral de 44px touch (orden F5,
+ *  mismo umbral táctil que el editor F4)? Distancia euclídea. */
+export function shouldStartDrag(dx: number, dy: number, threshold: number = EDITOR_TOUCH_PX): boolean {
+  return Math.hypot(dx, dy) >= threshold;
+}
+
+/** Índice de cola para un punto (px del contenedor) dadas las cajas de las
+  *  miniaturas (bboxes de la galería): el centro más cercano debajo del punto.
+  *  Sin cajas → -1. PURO y testeable (el arrastre solo reordena sobre
+  *  miniaturas, nunca fuera del contenedor). */
+export function indexAtPoint(
+  x: number,
+  y: number,
+  boxes: ReadonlyArray<{ x: number; y: number; w: number; h: number }>,
+): number {
+  let best = -1;
+  let bestDist = Infinity;
+  for (let i = 0; i < boxes.length; i++) {
+    const b = boxes[i]!;
+    const cx = b.x + b.w / 2;
+    const cy = b.y + b.h / 2;
+    const d = Math.hypot(x - cx, y - cy);
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+export async function preparePages(
+  pages: readonly PageRecord[],
+  mode: EnhanceMode,
+  prepare: (source: Blob, mode: EnhanceMode) => Promise<Blob>,
+): Promise<PageRecord[]> {
+  const out: PageRecord[] = [];
+  for (const p of pages) {
+    const blob = await prepare(p.blob, mode);
+    if (blob === null) throw new Error(`enhance falló para la página ${p.order + 1}`);
+    out.push({ ...p, blob, mode });
+  }
+  return out;
+}
+
+/** Texto del modo para el selector (sigue la nomenclatura §F5). */
+export function modeLabel(mode: EnhanceMode): string {
+  switch (mode) {
+    case 'color':
+      return 'Color';
+    case 'gray':
+      return 'Gris';
+    case 'bw':
+      return 'B/N';
+    case 'natural':
+      return 'Natural';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Clase (DOM ligera; deps inyectadas; sin document global salvo helpers que
+// llegan por parámetro)
+// ---------------------------------------------------------------------------
+
+export interface PageGalleryDeps {
+  /** Contenedor de la galería (se pinta en render()). */
+  root: HTMLElement;
+  store: PageStore;
+  /** Fabricador de miniatura (blob → canvas ~200px; inyectable/testeable).
+   *  Default: canvas 2d con drawImage + downscale a thumbDims. */
+  makeThumb?: (blob: Blob) => Promise<HTMLCanvasElement>;
+  /** Transforma el warped almacenado al modo global vigente antes del PDF.
+   *  Default: usa el blob almacenado (para consumidores ya realzados). */
+  prepare?: (source: Blob, mode: EnhanceMode) => Promise<Blob>;
+  /** Comparte el PDF (navigator.share; el harness decide share vs download).
+   *  Devuelve false si el usuario canceló. Default: download vía <a>. */
+  onExport?: (pdf: Blob, a4: boolean) => Promise<void>;
+  /** Cambio de modo GLOBAL (harness la reenvía al worker/cola). */
+  onModeChange?: (mode: EnhanceMode) => void;
+  /** Aviso al usuario (cuota >70%, recordatorio de exportar). */
+  warn?: (msg: string) => void;
+}
+
+/** Galería F5. render() pinta las páginas del store; el resto son delegaciones
+ *  finas a PageStore (que persiste). El arrastre es pointer-event con umbral
+ *  44px y reordena sobre bboxes (indexAtPoint). */
+export class PageGallery {
+  private readonly root: HTMLElement;
+  private readonly store: PageStore;
+  private readonly makeThumb: NonNullable<PageGalleryDeps['makeThumb']>;
+  private readonly onExport: NonNullable<PageGalleryDeps['onExport']>;
+  private readonly prepare: NonNullable<PageGalleryDeps['prepare']>;
+  private readonly onModeChange: ((mode: EnhanceMode) => void) | undefined;
+  private readonly warn: ((msg: string) => void) | undefined;
+  private mode: EnhanceMode = 'color';
+  private pages: PageRecord[] = [];
+  /** El usuario exportó en ESTA sesión: el aviso "sin exportar" se muestra
+   *  mientras haya páginas en la cola y no se haya exportado aún. */
+  private exportedThisSession = false;
+  private boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
+
+  constructor(deps: PageGalleryDeps) {
+    this.root = deps.root;
+    this.store = deps.store;
+    this.onModeChange = deps.onModeChange;
+    this.warn = deps.warn;
+    this.prepare = deps.prepare ?? (async (source) => source);
+    this.makeThumb =
+      deps.makeThumb ??
+      (async (blob) => {
+        const doc = this.root.ownerDocument;
+        const url = URL.createObjectURL(blob);
+        try {
+          const img = new Image();
+          img.src = url;
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error('thumb: imagen ilegible'));
+          });
+          const d = thumbDims(img.naturalWidth, img.naturalHeight);
+          const c = doc.createElement('canvas');
+          c.width = d.w;
+          c.height = d.h;
+          const ctx = c.getContext('2d');
+          if (ctx === null) throw new Error('thumb: sin contexto 2d');
+          ctx.drawImage(img, 0, 0, d.w, d.h);
+          return c;
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      });
+    const doc = this.root.ownerDocument;
+    this.onExport =
+      deps.onExport ??
+      (async (pdf, a4) => {
+        await defaultExport(doc, pdf, a4);
+      });
+  }
+
+  /** Reflexión del modo global actual (el harness la mantiene sincronizada;
+   *  el worker la aplica en el próximo enhance). */
+  setMode(mode: EnhanceMode): void {
+    this.mode = mode;
+  }
+  getMode(): EnhanceMode {
+    return this.mode;
+  }
+
+  /** Pinta la galería (miniaturas ~200px, contador, estados). El harness la
+   *  llama tras cada mutación de la cola. */
+  async render(): Promise<void> {
+    this.pages = await this.store.pages();
+    this.root.textContent = '';
+    const doc = this.root.ownerDocument;
+
+    // Barra: contador + selector global de modo.
+    const bar = doc.createElement('div');
+    bar.className = 'pg-bar';
+    const counter = doc.createElement('span');
+    counter.className = 'pg-count';
+    counter.textContent = `${this.pages.length} página${this.pages.length === 1 ? '' : 's'}`;
+    bar.appendChild(counter);
+    const sel = doc.createElement('select');
+    sel.className = 'pg-mode';
+    for (const m of ['color', 'gray', 'bw', 'natural'] as const) {
+      const opt = doc.createElement('option');
+      opt.value = m;
+      opt.textContent = modeLabel(m);
+      sel.appendChild(opt);
+    }
+    sel.value = this.mode;
+    sel.addEventListener('change', () => {
+      this.mode = sel.value as EnhanceMode;
+      this.onModeChange?.(this.mode);
+    });
+    bar.appendChild(sel);
+    this.root.appendChild(bar);
+
+    // Miniaturas reordenables.
+    const grid = doc.createElement('div');
+    grid.className = 'pg-grid';
+    const thumbs: HTMLElement[] = [];
+    for (const p of this.pages) {
+      const t = doc.createElement('div');
+      t.className = 'pg-thumb';
+      t.dataset.id = p.id;
+      const canvas = await this.makeThumb(p.blob);
+      canvas.className = 'pg-thumb-img';
+      t.appendChild(canvas);
+      const del = doc.createElement('button');
+      del.className = 'pg-del';
+      del.type = 'button';
+      del.textContent = '✕';
+      del.setAttribute('aria-label', `Quitar página ${p.order + 1}`);
+      del.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        await this.store.remove(p.id);
+        await this.render();
+      });
+      t.appendChild(del);
+      const tag = doc.createElement('div');
+      tag.className = 'pg-mode-tag';
+      tag.textContent = modeLabel(p.mode);
+      t.appendChild(tag);
+      grid.appendChild(t);
+      thumbs.push(t);
+    }
+    this.root.appendChild(grid);
+    this.bindReorder(thumbs);
+
+    // Recordatorio: páginas SIN exportar al cerrar (solo si hay páginas y no
+    // se exportó desde que se abrió la sesión — el plan pide el aviso).
+    if (!this.exportedThisSession && this.pages.length > 0) {
+      const hint = doc.createElement('div');
+      hint.className = 'pg-hint';
+      hint.textContent = 'Quedan páginas sin exportar: pulsa "Exportar PDF" antes de cerrar.';
+      this.root.appendChild(hint);
+    }
+
+    // Cuota >70% → aviso (reutiliza quotaReport de dataCollect).
+    try {
+      const q = await this.store.quota();
+      if (q.warn) this.warn?.(`Cuota de almacenamiento al ${Math.round((q.pct ?? 0) * 100)}% — exporta y descarga el PDF.`);
+    } catch {
+      // sin estimador: no crítico
+    }
+  }
+
+  /** Exporta el PDF de la cola (Letter por defecto, A4 con `a4`) y limpia el
+   *  recordatorio. Devuelve bytes para el reporte (el harness mide el meta). */
+  async exportPdf(a4 = false): Promise<{ size: number; count: number } | null> {
+    const pages = await this.store.pages();
+    if (pages.length === 0) return null;
+    const prepared = await preparePages(pages, this.mode, this.prepare);
+    const pdf = await this.store.exportPdf({ a4, pages: prepared });
+    if (pdf === null) return null;
+    if (pdf.size > PDF_SIZE_LIMIT_BYTES) {
+      this.warn?.(`PDF de ${(pdf.size / 1024 / 1024).toFixed(1)} MB supera el techo de 8 MB — reduce páginas.`);
+    }
+    await this.onExport(pdf, a4);
+    this.exportedThisSession = true;
+    return { size: pdf.size, count: prepared.length };
+  }
+
+  // --- internals ---
+
+  /** Arrastre touch con umbral 44px: pointerdown → si supera el umbral se
+   *  arrastra (la miniatura sigue al dedo con transform), pointerup sobre otra
+   *  miniatura → store.reorder (relocate + indexAtPoint, ambos puros). */
+  private bindReorder(thumbs: HTMLElement[]): void {
+    this.boxes = thumbs.map((t) => {
+      const r = t.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    });
+    for (let i = 0; i < thumbs.length; i++) {
+      const t = thumbs[i]!;
+      t.style.touchAction = 'none';
+      let startX = 0;
+      let startY = 0;
+      let from = -1;
+      let dragging = false;
+      t.addEventListener('pointerdown', (e) => {
+        if ((e.target as HTMLElement).classList.contains('pg-del')) return;
+        from = i;
+        startX = e.clientX;
+        startY = e.clientY;
+        dragging = false;
+        t.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      });
+      t.addEventListener('pointermove', (e) => {
+        if (from === -1) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (!dragging) {
+          if (!shouldStartDrag(dx, dy)) return;
+          dragging = true;
+          t.classList.add('pg-dragging');
+        }
+        t.style.transform = `translate(${dx}px, ${dy}px) scale(1.05)`;
+      });
+      const end = async (e?: PointerEvent): Promise<void> => {
+        if (from === -1) return;
+        const wasDrag = dragging;
+        t.classList.remove('pg-dragging');
+        t.style.transform = '';
+        if (wasDrag && e !== undefined) {
+          const to = indexAtPoint(e.clientX, e.clientY, this.boxes);
+          if (to !== -1 && to !== from) {
+            const ids = this.pages.map((p) => p.id);
+            const next = relocate(ids, from, to);
+            // Aplica el orden y persiste (un solo mensaje al store: reorder
+            // del origen + aquí la secuencia completa vía store.reorder).
+            await this.applyOrder(next);
+          }
+        }
+        from = -1;
+        dragging = false;
+      };
+      t.addEventListener('pointerup', (e) => {
+        void end(e);
+      });
+      t.addEventListener('pointercancel', () => {
+        void end();
+      });
+    }
+  }
+
+  /** Aplica una secuencia de ids a la cola persistida (reorder al índice de
+   *  cada página según la secuencia) y re-renderiza. */
+  private async applyOrder(ids: string[]): Promise<void> {
+    for (let i = 0; i < ids.length; i++) {
+      await this.store.reorder(ids[i]!, i);
+    }
+    await this.render();
+  }
+}
+
+/** Export por defecto: descarga vía <a download>. El harness puede inyectar
+ *  navigator.share en su lugar (share en iOS, download en desktop). */
+async function defaultExport(doc: Document, pdf: Blob, _a4: boolean): Promise<void> {
+  const a = doc.createElement('a');
+  a.href = URL.createObjectURL(pdf);
+  a.download = `scanner-${new Date().toISOString().slice(0, 10)}.pdf`;
+  doc.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}

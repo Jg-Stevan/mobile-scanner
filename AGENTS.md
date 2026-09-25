@@ -1,9 +1,11 @@
 # AGENTS.md — mobile-scanner
 
 ## Fuente de verdad
-- PLAN_MAESTRO.md (v3.0 CONGELADO): stack, arquitectura, fases,
+- PLAN_MAESTRO.md (v3.1 CONGELADO): stack, arquitectura, fases,
   no-goals, límites físicos. Los agentes NO re-discuten decisiones;
   proponen cambios vía propuesta documentada, nunca inline.
+- Para una IA externa (sin acceso al repo): DOSSIER-IA.md es el briefing
+  autocontenido — mantenerlo actualizado en cada cierre de tarea.
 
 ## Stack
 - Vite + TypeScript (strict). Node 24. Tests: vitest (`npm test`,

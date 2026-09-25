@@ -36,6 +36,8 @@ export function computeProcessDims(
   };
 }
 
+import type { EnhanceMode } from '../core/types';
+
 /** URL pineada del build oficial de OpenCV.js que carga el worker (T4).
  *  4.5.5: última con ruta estable verificada (4.10.0 devuelve 404 en ese path). */
 export const OPENCV_CDN_URL = 'https://docs.opencv.org/4.5.5/opencv.js';
@@ -109,6 +111,35 @@ export interface WarpResult {
   refined: boolean;
   fellBack: [boolean, boolean, boolean, boolean] | null;
 }
+
+/** UI → Worker: aplicar un modo de la cola multipágina (§5-F5) al warped.
+ *  `bitmap` = warped RGBA (dims outW×outH): viaja como TRANSFERABLE. El modo
+ *  es GLOBAL (per-page override PROHIBIDO — orden F5). */
+export interface EnhanceRequest {
+  type: 'enhance';
+  bitmap: ImageBitmap;
+  mode: EnhanceMode;
+  /** Eco del ts del request (cálculo de latencia en UI). */
+  ts: number;
+}
+
+/** Worker → UI: resultado del enhance (§5-F5). `blob` ya ENCODE (mime según
+ *  modo: jpeg q90 o png) — el main lo cierra al consumirlo... si un objeto
+ *  Blob se cierra, en realidad es transferible por structured clone en
+ *  postMessage como el resto; `w/h` = dims del bitmap de entrada. */
+export interface EnhanceResult {
+  type: 'enhanced';
+  blob: Blob;
+  mime: 'image/jpeg' | 'image/png';
+  w: number;
+  h: number;
+  mode: EnhanceMode;
+  elapsedMs: number;
+  memory?: { jsHeapBytes: number | null; wasmBytes: number | null };
+  /** Eco del ts del request (cálculo de latencia en UI). */
+  ts: number;
+}
+
 /** Worker → UI: llegó un frame mientras procesaba → DESCARTADO (el descarte
  *  ES el mecanismo de backpressure; la UI además lo evita con su flag). */
 export interface BusyReply {
@@ -126,6 +157,36 @@ export interface BootMsg {
 /** Worker → UI: OpenCV.js listo (onRuntimeInitialized). */
 export interface ReadyMsg {
   type: 'ready';
+  /** Sondeo de la superficie real de opencv.js 4.5.5 (D-F5 — evidencia del
+   *  enhance JS puro): qué símbolos existen de verdad en el namespace `cv`
+   *  cargado. OPCIONAL y ADITIVO: los consumidores que solo miran `type`
+   *  siguen funcionando. */
+  probe?: CvProbe;
+}
+
+/** Resultado del sondeo de superficie de opencv.js (D-F5). Cada campo = ¿existe
+ *  el símbolo en el namespace `cv`? Aditivo a 'ready' para el reporte F5. */
+export interface CvProbe {
+  createCLAHE: boolean;
+  COLOR_RGBA2Lab: boolean;
+  COLOR_RGB2Lab: boolean;
+  COLOR_Lab2RGB: boolean;
+  dilate: boolean;
+  erode: boolean;
+  divide: boolean;
+  medianBlur: boolean;
+  threshold: boolean;
+  morphologyEx: boolean;
+  getStructuringElement: boolean;
+  MORPH_RECT: boolean;
+  MORPH_CLOSE: boolean;
+  resize: boolean;
+  INTER_AREA: boolean;
+  INTER_LINEAR: boolean;
+  boxFilter: boolean;
+  blur: boolean;
+  split: boolean;
+  merge: boolean;
 }
 
 /** Worker → UI: fallo (red al cargar opencv.js o excepción en pipeline). */
@@ -134,5 +195,12 @@ export interface ErrorMsg {
   message: string;
 }
 
-export type WorkerIn = DetectRequest | WarpRequest;
-export type WorkerOut = ResultReply | WarpResult | BusyReply | BootMsg | ReadyMsg | ErrorMsg;
+export type WorkerIn = DetectRequest | WarpRequest | EnhanceRequest;
+export type WorkerOut =
+  | ResultReply
+  | WarpResult
+  | EnhanceResult
+  | BusyReply
+  | BootMsg
+  | ReadyMsg
+  | ErrorMsg;

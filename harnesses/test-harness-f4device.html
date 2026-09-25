@@ -126,15 +126,16 @@
 </div>
 
 <script type="module">
-import { startFrameLoop } from './src/camera/frameLoop.ts';
-import { CameraController } from './src/camera/CameraController.ts';
-import { ScannerView, shouldSuggestPortrait, PORTRAIT_HINT } from './src/ui/ScannerView.ts';
-import { ScoreView } from './src/ui/ScoreView.ts';
-import { ScanOrchestrator } from './src/scan/ScanOrchestrator.ts';
-import { AdjustEditor } from './src/ui/AdjustEditor.ts';
-import { DatasetStore, openDatasetDB, persistDatasetStorage } from './src/export/datasetStore.ts';
-import { cdeReport, DIANA_DEFAULT_WIDTH_MM } from './src/core/dianaMath.ts';
-import { CONDITION_TAGS } from './src/core/dataCollect.ts';
+import detectionWorkerUrl from '../src/workers/detection.worker.ts?worker&url';
+import { startFrameLoop } from '../src/camera/frameLoop.ts';
+import { CameraController } from '../src/camera/CameraController.ts';
+import { ScannerView, shouldSuggestPortrait, PORTRAIT_HINT } from '../src/ui/ScannerView.ts';
+import { ScoreView } from '../src/ui/ScoreView.ts';
+import { ScanOrchestrator } from '../src/scan/ScanOrchestrator.ts';
+import { AdjustEditor } from '../src/ui/AdjustEditor.ts';
+import { DatasetStore, openDatasetDB, persistDatasetStorage } from '../src/export/datasetStore.ts';
+import { cdeReport, DIANA_DEFAULT_WIDTH_MM } from '../src/core/dianaMath.ts';
+import { CONDITION_TAGS } from '../src/core/dataCollect.ts';
 
 const $ = (id) => document.getElementById(id);
 const toast = (s) => { $('toast').textContent = s; };
@@ -158,7 +159,7 @@ async function main() {
   $('mCam').textContent = `${profile.label} (${profile.trackWidth}×${profile.trackHeight})`;
 
   // Worker del STREAM (frameLoop lo posee: sobrescribe su onmessage).
-  const worker = new Worker(new URL('./src/workers/detection.worker.ts', import.meta.url));
+  const worker = new Worker(detectionWorkerUrl);
   await new Promise((resolve, reject) => {
     const to = setTimeout(() => reject(new Error('worker timeout')), 90000);
     worker.onmessage = (ev) => {
@@ -168,7 +169,7 @@ async function main() {
   });
 
   // Segundo worker SOLO para foto (re-detección + refine + warp).
-  const photoWorker = new Worker(new URL('./src/workers/detection.worker.ts', import.meta.url));
+  const photoWorker = new Worker(detectionWorkerUrl);
   await new Promise((resolve, reject) => {
     const to = setTimeout(() => reject(new Error('photo worker timeout')), 90000);
     photoWorker.onmessage = (ev) => {

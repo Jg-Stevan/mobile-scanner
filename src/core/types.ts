@@ -55,6 +55,11 @@ export interface CameraProfile {
   capturedAt: number;
 }
 
+/** Modo de procesamiento de la cola multipágina (§5-F5): 4 modos del pipeline.
+ *  Compartido por ScanPage, el protocolo del worker (EnhanceRequest) y el
+ *  export de PDF. Per-page override PROHIBIDO (orden F5): el modo es global. */
+export type EnhanceMode = 'color' | 'gray' | 'bw' | 'natural';
+
 /** Página escaneada dentro de la cola multipágina (§5-F5). */
 export interface ScanPage {
   id: string;
@@ -63,7 +68,7 @@ export interface ScanPage {
   /** Quad final (auto o ajustado) en orden TL,TR,BR,BL. */
   quad: Quadrilateral;
   /** Modo de procesamiento (§5-F5): 4 modos del pipeline. */
-  mode: 'color' | 'gray' | 'bw' | 'natural';
+  mode: EnhanceMode;
   /** Índice de orden en la cola multipágina. */
   order: number;
 }

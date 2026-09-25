@@ -97,8 +97,6 @@
   revisor-b 1 finding desestimado (cap 3500px rige salida warp/F3, no el hint
   `ideal` de entrada — el spec T5 exige 3840). ⏳ Falta validación humana en
   SM-A566E (ver arriba). Evidencia en `PLAN_EVIDENCE/T5-camera/`.
-## Tareas en Progreso
-- _Ninguna — F2-c cerrada con re-test humano completado._
 - **F3-a cerrada (código · 2026-09-22):** re-detección sobre la foto en
   ScanOrchestrator (deps nuevas `photoProcessBitmap` + `detectPhoto`:
   downscale a 400-clase vía `computeProcessDims` + `DetectRequest` al worker,
@@ -135,6 +133,8 @@
   (acta 0.323/0.326; papel blanco 0.7727 = 8.5/11). F3-a re-detección · F3-b refiner
   0.371px · F3-c warp · F3-d higiene · F3-e fix warp caído (E2E 410×341, estrés 9242
   warps 0 errores) cerradas.
+
+## Tareas en Progreso
 - **F4 en curso (código · 2026-09-24):** editor manual de esquinas + dataset F6.5 +
   diana. FSM `editing` en ScanOrchestrator (`openEditor`/`submitEditedQuad`/
   `revertEditedQuad`/`cancelEditing`; `submit` ok → 'captured' + cooldown normal;
@@ -147,9 +147,18 @@
   `addAdjusted` mismo id sin re-encode; contador X/300; aviso cuota >70%; persist
   en iOS) + `src/core/dianaMath.ts` (`cdeReport` "±X mm al 95%") +
   `scripts/gen-diana.mjs` (diana Carta 190.5×254 mm imprimible, auto-chequeos OK).
-  Harness `test-harness-f4device.html` + build `f4/` (colector default OFF,
+  Harness fuente `harnesses/test-harness-f4device.html` + build `f4/` (colector default OFF,
   opt-in toggle, exportar ZIP, modo diana). 248/248 tests, tsc limpio. ⏳ Falta
   validación humana en dispositivo físico (edición táctil + colector + diana).
+- **F5 en curso (código · 2026-09-24):** multipágina + 4 modos + PDF. `imageModes.ts`
+  (Sauvola O(W), white point), enhance JS dentro del worker (`enhanceJs.ts`: LAB/CLAHE
+  y shadow-removal; createCLAHE no existe en OpenCV 4.5.5) + rama `enhance` con
+  backpressure, `PageStore` IndexedDB, `pdfExport` Letter/A4, `PageGallery` con
+  orden/selector global y harness F5 con CER Tesseract. 314/314 tests, tsc limpio.
+  PDF E2E de 5 páginas 2040×2640: 907803 bytes (<8MB). Estrés final 10 min:
+  E2E 2689 ciclos detect+warp+enhance, 0 errores, enhance p95 153.3ms; Node
+  5990 iteraciones, 0 errores, heap 12.45→12.14MB (-0.31MB). applyMode Node
+  2040×2640: Color 1.49s · Gris 1.01s · B/N 1.36s · Natural 1.19s.
 
 ## Operación del entorno (no-tareas — creada en F3-d)
 
@@ -159,7 +168,11 @@ de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
 - **Higiene de deploy de harnesses F2/F3/F4 (2026-09-24):** al reconstruir un
   harness, conservar al menos una generación previa de sus assets hasheados.
   Los HTML cacheados pueden seguir resolviendo el bundle anterior mientras el
-  CDN expira; no borrar el asset previo durante el deploy.
+  CDN expira; no borrar el asset previo durante el deploy. (2026-09-24: las
+  FUENTES de los harnesses se reorganizaron en `harnesses/` — spike.html +
+  test-harness-f{2..5}device.html, imports `../src/`; los builds `fN/` de
+  Pages siguen donde están. El build de deploy usa config vite temporal con
+  `base: './'` y entrada el HTML del harness, borrada tras el deploy.)
 
 
 - **Sonda modelos-v2 (2026-09-22, re-clasificada en F3-d):** sonda de
@@ -183,21 +196,19 @@ de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
   F3-c); el helper trata null=desconocido→revisar, y F4 debe heredar ese criterio.
 
 ## Verificaciones pendientes (TUI/humanas)
-- **F2-c re-test humano (2026-09-22, CERRADA):** APROBADA en SM-A566E + iPhone —
-  auto dispara <5s en acta densa, sin disparo espurio en movimiento, timeout = solo
-  toast, captura = vibra/flash. Evidencia en `PLAN_EVIDENCE/F2-device/`.
-- T5-humano ✓ CERRADO por F1-humano (camera 0 por D3 en SM-A566E).
-- Toggle torch real iOS ✓ CERRADO (verificado ON en F1-b).
-- T0.5 `opencode agent list` → 8 agentes desde mobile-scanner — **HECHO** (verificado 2026-09-20; evidencia 00 actualizada)
-- T1.4 `@explorador` cap ~3500px AGENTS.md:21 — **HECHO** (2026-09-20)
-- T2.4 skill `opencv-wasm-memoria` (withMats) con `@implementador-backend` — **HECHO** (2026-09-20)
-- T4.3 fallback revisor → revisor-fallback: **HECHO** (2026-09-20; cazó y corrigió ratio 16:9 implícito en spike.html)
-- T4.1 `opencode mcp list` → 4/4 desde mobile-scanner — ⏳ **última pendiente** (CLI cuelga; visual TUI)
+- CERRADAS (detalle en Tareas Completadas y PLAN_EVIDENCE): F2-c re-test humano
+  (APROBADA 2026-09-22, `PLAN_EVIDENCE/F2-device/`) · T5-humano (cubierto por
+  F1-humano/D3) · torch real iOS (ON en F1-b) · adaptación T0.5/T1.4/T2.4/T4.3 (2026-09-20).
+- **T4.1 `opencode mcp list` en TUI (4/4)** — ⏳ última pendiente del plan de
+  adaptación (CLI cuelga; verificación visual TUI).
+- **F4 validación humana en dispositivo físico** — ⏳ edición táctil de esquinas
+  (loupe) + colector de dataset opt-in + diana de calibración (±X mm al 95%).
+- **F5 revisión visual humana** — ⏳ banding CLAHE (D-F5-b) + resultados del
+  harness CER Tesseract por modo/categoría.
 
 ## Decisiones de Arquitectura
-- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F4 editor manual de
-  esquinas + dataset F6.5 + diana** (F1 COMPLETADA código + humano en 2
-  dispositivos + D7; matriz congelada abajo)- **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
+- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F5 multipágina + 4 modos + PDF**
+  (F4 código cerrado, validación humana en curso) - **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
   adaptación: T4.1 `opencode mcp list` en TUI.
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;
   aviso de cap >3500px añadido al log. Re-validado sin errores.
@@ -214,6 +225,12 @@ de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
   sobre el "(0.4/0.7…)" ambiguo del brief (sumaría >1).
 
 ## Desviaciones Documentadas
+- **D-F5 (registrada · F5):** OpenCV.js 4.5.5 no expone `createCLAHE` ni
+  `COLOR_RGBA2Lab`; los modos se implementan en JS puro dentro del worker,
+  Node-testeable, sin `cv.Mat` fuera de `withMats`.
+- **D-F5-b (registrada · F5):** CLAHE 2.0/8×8 usa LUT de la celda sin
+  interpolación bilineal entre vecinas para mantener el budget; banding/rejilla
+  queda pendiente de CER + revisión visual humana en el harness.
 - **D1 (aceptada por humano · 2026-09-21 · tarea T1):** formato de referencia A4 → CARTA (8.5 × 11 in). Motivo: estándar regional + disponibilidad real de papel carta en el entorno de medición. A4 queda como alternativa documentada.
 - **D2 (registrada · T1-R4 · spike Android SM-A566E):** la orientación del teléfono afecta el DPI en documentos portrait: vertical ≈ 254 DPI teórico vs horizontal ≈ 196 (el lado corto del sensor alinea con el lado largo del papel). Acción futura: guía de orientación en UI (F1/F2).
 - **D3 (registrada · T1-R4 · spike Android):** criterio de selección de cámara = `focusMode` con "continuous"/"single-shot" (autofocus real). Cámaras solo-[manual] = fixed-focus → descartadas. Validado: cámara 2 (ultra-wide) sin AF y sin torch → descartada.

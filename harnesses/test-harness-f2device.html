@@ -45,11 +45,12 @@
 <div>Última ganadora (score <span id="mScore">—</span>):<br><canvas id="thumb" width="320" height="240"></canvas></div>
 <pre id="out">…</pre>
 <script type="module">
-import { startFrameLoop } from './src/camera/frameLoop.ts';
-import { CameraController } from './src/camera/CameraController.ts';
-import { ScannerView, shouldSuggestPortrait, PORTRAIT_HINT } from './src/ui/ScannerView.ts';
-import { ScoreView } from './src/ui/ScoreView.ts';
-import { ScanOrchestrator } from './src/scan/ScanOrchestrator.ts';
+import detectionWorkerUrl from '../src/workers/detection.worker.ts?worker&url';
+import { startFrameLoop } from '../src/camera/frameLoop.ts';
+import { CameraController } from '../src/camera/CameraController.ts';
+import { ScannerView, shouldSuggestPortrait, PORTRAIT_HINT } from '../src/ui/ScannerView.ts';
+import { ScoreView } from '../src/ui/ScoreView.ts';
+import { ScanOrchestrator } from '../src/scan/ScanOrchestrator.ts';
 
 const $ = (id) => document.getElementById(id);
 const toast = (s) => { $('toast').textContent = s; };
@@ -62,7 +63,7 @@ async function main() {
   await video.play();
   $('mCam').textContent = `${profile.label} (${profile.trackWidth}×${profile.trackHeight})`;
 
-  const worker = new Worker(new URL('./src/workers/detection.worker.ts', import.meta.url));
+  const worker = new Worker(detectionWorkerUrl);
   await new Promise((resolve, reject) => {
     const to = setTimeout(() => reject(new Error('worker timeout')), 90000);
     worker.onmessage = (ev) => {

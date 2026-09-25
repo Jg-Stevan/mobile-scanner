@@ -1,25 +1,11 @@
 // src/core/dianaMath.ts — medición de precisión de esquinas con la diana F4
 // (orden F4, punto 4). PURO (Node-testeable): convierte errores en px del
-// quad detectado a mm usando el ANCHO FÍSICO CONOCIDO del rectángulo de la
-// diana (7.5 in) y agrega el percentil 95 sobre N capturas → "±X mm al 95%".
-//
-// Operacionalización (documentada): N capturas de la MISMA diana estática;
-// la posición media de cada esquina a lo largo de las capturas es el
-// estimador de su posición "verdadera"; la desviación de cada esquina
-// respecto a esa media = error de detección de esquina (CDE) de esa captura.
-// Con un homografía 4-puntos los residuos absolutos serían cero por
-// construcción, así que se mide el CDE como dispersión (jitter) del detector
-// sobre objetivo estático — consistente con el techo 1-2px del plan
-// (Física aceptada, §F1). El harness solo reporta; nadie afina umbrales.
+// quad detectado a mm usando el ancho real medido del rectángulo de la diana
+// y agrega el percentil 95 sobre N capturas → "±X mm al 95%".
 
 import type { Quadrilateral } from './types';
 
-/** Ancho físico del rectángulo negro de la diana (orden F4 punto 4:
- *  "rectángulo negro 7.5×10in centrado" en carta 8.5×11 → márgenes de 1in). */
-export const DIANA_W_IN = 7.5;
-/** Alto físico del rectángulo de la diana (0.5in de margen extra vertical). */
-export const DIANA_H_IN = 10;
-export const IN_TO_MM = 25.4;
+export const DIANA_DEFAULT_WIDTH_MM = 190.5;
 
 /** Longitudes de los 4 lados en px: [top, right, bottom, left] (orden 0-3). */
 export function sideLengths(q: Quadrilateral): [number, number, number, number] {
@@ -34,18 +20,17 @@ export function meanWidthPx(q: Quadrilateral): number {
   return (top + bottom) / 2;
 }
 
-/** Conversor px→mm de ESTE quad: el rectángulo impreso mide DIANA_W_IN
- *  físicamente, así que mmPorPx = 7.5in·25.4 / anchoPx. NaN si degenerado. */
-export function mmPerPixel(q: Quadrilateral): number {
-  const w = meanWidthPx(q);
-  if (!(w > 0)) return NaN;
-  return (DIANA_W_IN * IN_TO_MM) / w;
+/** Conversor px→mm de ESTE quad: mmPorPx = anchoRealMm / anchoPx.
+ *  NaN si el ancho medido o el ancho real son degenerados. */
+export function mmPerPixel(widthPx: number, realMm: number): number {
+  if (!(widthPx > 0) || !(realMm > 0)) return NaN;
+  return realMm / widthPx;
 }
 
 /** 4N distancias esquina↔media (en mm, escaladas con el mmPorPx de cada
  *  captura) para reportar "±X mm al 95%". <2 capturas → null (una captura
  *  no define una media). */
-export function cornerResidualsMm(quads: Quadrilateral[]): number[] | null {
+export function cornerResidualsMm(quads: Quadrilateral[], realMm: number): number[] | null {
   if (quads.length < 2) return null;
   const n = quads.length;
   const meanX = [0, 0, 0, 0];
@@ -58,7 +43,7 @@ export function cornerResidualsMm(quads: Quadrilateral[]): number[] | null {
   }
   const out: number[] = [];
   for (const q of quads) {
-    const mm = mmPerPixel(q);
+    const mm = mmPerPixel(meanWidthPx(q), realMm);
     if (!Number.isFinite(mm) || mm <= 0) return null; // degenerado: sin escala
     for (let i = 0; i < 4; i++) {
       const dPx = Math.hypot(q[i]!.x - meanX[i]!, q[i]!.y - meanY[i]!);
@@ -92,11 +77,11 @@ export interface DianaReport {
 
 /** Reporte de esquinas: vacío o <2 capturas → null (el harness muestra 0
  *  capturas pendientes en vez de un número sin significado estadístico). */
-export function cdeReport(quads: Quadrilateral[]): DianaReport | null {
-  const mm = cornerResidualsMm(quads);
+export function cdeReport(quads: Quadrilateral[], realMm: number): DianaReport | null {
+  const mm = cornerResidualsMm(quads, realMm);
   const p95 = mm === null ? null : percentile95(mm);
   if (quads.length < 2 || p95 === null) return null;
-  const mpp = quads.map(mmPerPixel).filter(Number.isFinite);
+  const mpp = quads.map((q) => mmPerPixel(meanWidthPx(q), realMm)).filter(Number.isFinite);
   const meanMpp = mpp.reduce((a, b) => a + b, 0) / Math.max(1, mpp.length);
   return { count: quads.length, mmPerPixel: meanMpp, p95mm: p95 };
 }

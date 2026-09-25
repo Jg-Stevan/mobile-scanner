@@ -1,8 +1,8 @@
 // scripts/gen-diana.mjs — diana imprimible F4 (orden F4, punto 4).
 // PNG carta (8.5×11in) con un rectángulo NEGRO de 7.5×10in centrado y una
-// muesca blanca de registro en cada esquina. Imprimido a escala real (100%,
-// "actual size") el rectángulo mide EXACTAMENTE 7.5×10 pulgadas físicas →
-// dianaMath convierte px→mm vía ese ancho conocido.
+// muesca blanca de registro en cada esquina. La diana del repo conserva el
+// tamaño teórico 7.5×10 pulgadas; para el reporte F4 el humano mide el ancho
+// real impreso y dianaMath convierte px→mm usando esa medida.
 //
 // 300 DPI para que el marcador de resolución (pHYs) lo imprima a tamaño
 // físico en la mayoría de impresoras: 8.5in·300 = 2550px, 11in·300 = 3300px;
@@ -125,6 +125,7 @@ console.log(
     `el rectángulo debe medir ${7.5 * IN}×${10 * IN} mm (±1 mm).`
 );
 console.log(
-  `En el harness: Modo diana ON → capturar la diana N veces (misma postura estática); ` +
-    `dianaMath reporta "±X mm al 95%" con el ancho físico 7.5in.`
+  `En el harness: Modo diana ON → medir el ancho real impreso (y alto, para el
+  acta), ingresarlo en el campo, capturar la diana N veces (misma postura
+  estática); dianaMath reporta "±X mm al 95%" calibrado contra esa medición.`
 );
