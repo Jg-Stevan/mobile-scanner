@@ -133,6 +133,24 @@
   (acta 0.323/0.326; papel blanco 0.7727 = 8.5/11). F3-a re-detección · F3-b refiner
   0.371px · F3-c warp · F3-d higiene · F3-e fix warp caído (E2E 410×341, estrés 9242
   warps 0 errores) cerradas.
+- **F4 CERRADA (código + validación humana 2 dispositivos · 2026-09-25):** editor
+  de esquinas (loupe lado opuesto al dedo, validación en vivo, badges honestos,
+  confirm/revert/cancel) + colector opt-in (contrato DatasetEntry, anti-sesgo:
+  el registro nunca mezcla auto con ajuste) + diana CDE (dianaMath puro, 13/13).
+  Cadena de fixes hasta el cierre: F4-fix-arranque (boot recuperable) →
+  F4-fix-typo-editBtn (causa raíz del F4 muerto) → F4-validación ronda 1
+  (3 hallazgos del editor corregidos) → f4-fix-stale-fellback (fbOf: fellBack
+  solo si la foto fue warpeada). Ronda 2 multi-dispositivo (ZIPs del colector,
+  rama dataset-ronda2): Samsung 7 + iPhone 17 Pro 10 = 17/17 contrato limpio;
+  3 adjustedQuad reales (2 edición clásica + 1 recuperación manual TOTAL de un
+  fondo-claro sin detección — re-warp del quad manual con fellBack propio,
+  lección: la regla "autoQuad null ⇒ fellBack null" exigía warp, no auto);
+  diana en vivo: ±58.44 mm al 95% (N=5; 185 mm) Samsung · ±23.99 mm (N=7)
+  iPhone; iOS orientación correcta (track apaisado, fotos retrato, quads
+  foto-relativos) y camino nulo honesto (captura accidental sin detección
+  registrada limpia). Parches verificados byte-exactos en origin/main.
+  Evidencia: PLAN_EVIDENCE/F4/ (colector ronda1+ronda2, validacion,
+  F4-fix-*).
 
 ## Tareas en Progreso
 - **F4-validación ronda 1 — fixes del editor (harness+UI · 2026-09-25):** el
@@ -148,8 +166,8 @@
   overlay + .catch en confirm/revert. Rebuild f4/ (bundle Cd1nBD7V). E2E del
   artefacto: invalid visible+bloquea, válido confirma, 0 pageerrors; 314/314
   tests, tsc limpio. Evidencia: PLAN_EVIDENCE/F4-validacion/ (ronda 1).
-  ⏳ Humano aplica parche, pushea y repite editor + diana + colector (ronda 2;
-  los adjuntos de evidencia NO llegan al sandbox → reportar valores como TEXTO).
+  ✅ PAGADO en ronda 2 (2026-09-25): humano aplicó los parches y repitió
+  editor + diana + colector — ver F4 CERRADA en Tareas Completadas.
 - **F4-fix-typo-editBtn cerrada (harness · 2026-09-25):** tras aplicar y pushear
   el fix de arranque (`6403db4`), el humano reportó F4 SIGUE muerto en dispositivo
   (videos f3/f4 enviados; no llegaron al sandbox). Causa raíz REAL encontrada y
@@ -164,8 +182,8 @@
   válido). Fix: 1 carácter + rebuild `f4/` (bundle `DW_MiY1r`, generación previa
   conservada). E2E del ARTEFACTO con opencv stub: boot completo, shutter activo,
   `__orch`/`__editor` definidos, 0 pageerrors; 314/314 tests, tsc limpio.
-  Evidencia: `PLAN_EVIDENCE/F4-fix-typo-editBtn/`. ⏳ Humano aplica parche,
-  pushea y reintenta F4 (URL sin parámetros).
+  Evidencia: `PLAN_EVIDENCE/F4-fix-typo-editBtn/`. ✅ PAGADO: humano aplicó y
+  pusheó (46ccfd4) — el re-test ronda 2 confirma el editor operativo.
 - **F4-fix-arranque cerrada (harness · 2026-09-25):** el humano reportó F4 muerto
   (shutter manual y auto sin respuesta, incluso con `?autostart=1`). Diagnóstico
   Playwright: boot all-or-nothing — `main()` sin catch utilizable; un fallo del
@@ -245,18 +263,14 @@ de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
   F1-humano/D3) · torch real iOS (ON en F1-b) · adaptación T0.5/T1.4/T2.4/T4.3 (2026-09-20).
 - **T4.1 `opencode mcp list` en TUI (4/4)** — ⏳ última pendiente del plan de
   adaptación (CLI cuelga; verificación visual TUI).
-- **F4 validación humana en dispositivo físico** — ⏳ edición táctil de esquinas
-  (loupe) + colector de dataset opt-in + diana de calibración (±X mm al 95%).
-  (2026-09-25: primer intento bloqueado por fallo de arranque del harness —
-  corregido en F4-fix-arranque; el fallo persistente posterior era un typo
-  `$('#editBtn')` → corregido en F4-fix-typo-editBtn; reintentar con URL sin
-  parámetros tras aplicar y pushear el parche.)
+- **F4 validación humana en dispositivo físico** — ✅ CERRADA (2026-09-25):
+  edición táctil + colector + diana validados en SM-A566E e iPhone 17 Pro
+  (ronda 2, ver F4 CERRADA en Tareas Completadas).
 - **F5 revisión visual humana** — ⏳ banding CLAHE (D-F5-b) + resultados del
   harness CER Tesseract por modo/categoría.
 
 ## Decisiones de Arquitectura
-- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F5 multipágina + 4 modos + PDF**
-  (F4 código cerrado, validación humana en curso) - **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
+- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F5 multipágina + 4 modos + PDF** (F4 CERRADA 2026-09-25, validación humana completa en 2 dispositivos; F6 en curso en sandbox) - **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
   adaptación: T4.1 `opencode mcp list` en TUI.
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;
   aviso de cap >3500px añadido al log. Re-validado sin errores.

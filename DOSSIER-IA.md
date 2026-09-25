@@ -56,7 +56,7 @@
 | F1 | Detección de bordes en vivo (QuadDetector, overlay, estrés) | ✅ COMPLETADA (2026-09-22, validada en 2 dispositivos) |
 | F2 | Score de calidad + auto-shutter (burst-rank, k-de-n) | ✅ COMPLETADA (2026-09-22, re-test humano aprobado) |
 | F3 | Captura hi-res + re-detección + CornerRefiner + warp (CRÍTICA) | ✅ COMPLETADA (2026-09-23, código + 2 dispositivos) |
-| F4 | Editor de esquinas + colector de dataset + diana de calibración | 🟡 Código cerrado (248/248 tests, 2026-09-24) — **falta validación humana en dispositivo** (edición táctil + colector + diana) |
+| F4 | Editor de esquinas + colector de dataset + diana de calibración | ✅ COMPLETADA (2026-09-25, validada en SM-A566E + iPhone 17 Pro: editor con 3 adjustedQuad, colector 17/17 contrato, diana ±58.44/±23.99 mm al 95%) |
 | F5 | Multipágina + 4 modos de imagen + PDF | 🟡 En curso (314/314 tests, PDF E2E 5 págs <1MB, estrés 10min limpio) — falta revisión visual humana (banding CLAHE) |
 | F6 | PWA + telemetría (Sentry) + endurecimiento | ⚪ No iniciada |
 | F6.5 | Modelo ONNX (YOLOv8n-pose) | ⚪ Condicional: solo si telemetría post-MVP muestra >15% ajustes manuales |
@@ -145,13 +145,28 @@ mobile-scanner/
 
 ## 9. Pendientes actuales (por si te toca trabajar)
 
-1. **F4:** validación humana en dispositivo físico (edición táctil de esquinas + loupe, colector de dataset opt-in, diana de calibración ±X mm al 95%) — solo el humano puede.
-2. **F5:** revisión visual humana del banding CLAHE (D-F5-b) + harness CER Tesseract.
-3. **F6 (siguiente fase):** PWA (manifest + Workbox, cachear opencv.js 8MB), telemetría Sentry, endurecimiento de errores (permisos, rotación, background).
-4. Backlog: build custom OpenCV (~2-3MB solo imgproc) pre-producción.
+1. **F5:** revisión visual humana del banding CLAHE (D-F5-b) + harness CER Tesseract.
+2. **F6 (EN CURSO, código en sandbox):** self-host opencv.js (mata el punto único de fallo del CDN docs.opencv.org), PWA (manifest + service worker, cachear opencv 8MB → 2º arranque <2s), telemetría Sentry opt-in (falta DSN del humano), endurecimiento de errores (permisos, rotación, background), checklist de regresión semanal.
+3. **Del humano (cuando pueda):** F5 revisión visual en dispositivo · probar instalación PWA en ambos teléfonos · crear proyecto Sentry y compartir DSN · aplicar parches pendientes.
+4. Backlog: build custom OpenCV (~2-3MB solo imgproc) pre-producción · F6.5 ONNX (condicional a telemetría).
 
 ## 10. Changelog del dossier
 
+- **2026-09-25 (4) — F4 CERRADA:** validación ronda 2 multi-dispositivo. Humano
+  aplicó los 3 parches (typo editBtn + editor ronda 1 + fellBack stale;
+  verificado byte-exacto en origin/main) y exportó 2 ZIPs del colector:
+  Samsung 7 registros / iPhone 17 Pro 10 registros, 17/17 cumplen contrato
+  DatasetEntry. 3 adjustedQuad PRIMEROS en dispositivo (2 edición clásica +
+  1 recuperación manual TOTAL de un fondo-claro sin detección — el dataset
+  registra el fallo del auto Y la corrección humana). Diana en vivo en 2
+  plataformas: ±58.44 mm (N=5) y ±23.99 mm (N=7) al 95%, ancho 185 mm;
+  dianaMath 13/13 tests en sandbox. iOS: orientación correcta (track apaisado
+  3840×2160, fotos 900×1600 retrato, quads foto-relativos), camino nulo honesto
+  (foto accidental del piso registrada sin detección). Lección: la regla
+  "autoQuad null ⇒ fellBack null" era demasiado estricta — el re-warp del
+  ajuste manual (submitEditedQuad→requestWarp) refresca la meta, fellBack
+  pertenece al quad manual. Regla refinada en el analizador. Evidencia:
+  PLAN_EVIDENCE/F4/colector/ronda2/ + reporte-colector-ronda2.md.
 - **2026-09-25 (3):** F4 validación ronda 1: humano verifica arranque OK y
   reporta 3 hallazgos del editor. Fix del grave: "confirmar muerto" en captura
   manual = quad cruzado → 'invalid' con toast invisible bajo el overlay → ahora
