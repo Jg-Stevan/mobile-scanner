@@ -1,20 +1,22 @@
 #!/usr/bin/env node
-// Build del harness F4 → f4/ (F6: script PERSISTENTE, antes era ad-hoc).
-// Reproduce el procedimiento de rondas anteriores: root=harnesses, base='./',
-// entrada única test-harness-f4device.html, SALIDA acumulativa (los bundles
-// viejos en f4/assets/ SE CONSERVAN — regla de higiene de generaciones).
-// Uso: node scripts/build-harness-f4.mjs
+// Build del harness F5 → f5/ (F6.2: hermana de build-harness-f4.mjs).
+// root=harnesses, base='./', entrada test-harness-f5device.html, SALIDA
+// acumulativa (bundles viejos en f5/assets/ SE CONSERVAN — regla 8).
+// Post-build: inyección de cabecera PWA (manifest + theme-color + icono iOS)
+// y registro del service worker (../sw.js) con guardas de entorno.
+// Uso: node scripts/build-harness-f5.mjs
 import { build } from 'vite';
 import { cp, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const repo = resolve(import.meta.dirname, '..');
-const tmp = await mkdtemp(join(tmpdir(), 'f4-harness-'));
+const tmp = await mkdtemp(join(tmpdir(), 'f5-harness-'));
 
-// --- Inyección PWA (F6.2, idempotente) --------------------------------------
-// Concerniente de despliegue: se inyecta en el HTML CONSTRUIDO (las rutas ../
-// asumen el harness servido desde f4/ bajo el scope del sw.js raíz).
+// --- Inyección PWA (idempotente) -------------------------------------------
+// Se hace en el HTML CONSTRUIDO (no en la fuente) porque son concernientes de
+// despliegue: las rutas ../ solo son correctas con el harness servido desde
+// f4/ o f5/ bajo el scope del sw.js raíz. Marcador = idempotencia.
 const HEAD_PWA = [
   '<meta name="theme-color" content="#111111">',
   '<link rel="manifest" href="../manifest.webmanifest">',
@@ -52,15 +54,15 @@ try {
     build: {
       outDir: tmp,
       emptyOutDir: true,
-      rollupOptions: { input: join(repo, 'harnesses', 'test-harness-f4device.html') },
+      rollupOptions: { input: join(repo, 'harnesses', 'test-harness-f5device.html') },
     },
   });
-  const built = await readFile(join(tmp, 'test-harness-f4device.html'), 'utf8');
-  await writeFile(join(tmp, 'test-harness-f4device.html'), injectPwa(built));
+  const built = await readFile(join(tmp, 'test-harness-f5device.html'), 'utf8');
+  await writeFile(join(tmp, 'test-harness-f5device.html'), injectPwa(built));
   // html + assets nuevos ENCIMA de los existentes (sin borrar generaciones)
-  await cp(join(tmp, 'test-harness-f4device.html'), join(repo, 'f4', 'test-harness-f4device.html'));
-  await cp(join(tmp, 'assets'), join(repo, 'f4', 'assets'), { recursive: true });
-  console.log('✅ f4/ actualizado (generaciones previas conservadas + PWA inyectada)');
+  await cp(join(tmp, 'test-harness-f5device.html'), join(repo, 'f5', 'test-harness-f5device.html'));
+  await cp(join(tmp, 'assets'), join(repo, 'f5', 'assets'), { recursive: true });
+  console.log('✅ f5/ actualizado (generaciones previas conservadas + PWA inyectada)');
 } finally {
   await rm(tmp, { recursive: true, force: true });
 }

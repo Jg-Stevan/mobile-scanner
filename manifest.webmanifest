@@ -1,0 +1,26 @@
+{
+  "name": "mobile-scanner",
+  "short_name": "Scanner",
+  "description": "Digitalizador de documentos 100% en el navegador — captura, recorte automático y PDF sin servidor",
+  "lang": "es",
+  "start_url": "./f5/test-harness-f5device.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

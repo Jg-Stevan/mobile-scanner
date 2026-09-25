@@ -152,6 +152,19 @@ mobile-scanner/
 
 ## 10. Changelog del dossier
 
+- **2026-09-25 (5):** F6.2 PWA offline. Service worker hecho a mano (~120 líneas,
+  desviación documentada del «Workbox» del plan: Workbox por CDN = otro SPOF tras
+  F6.1) + manifest (start_url → harness F5, instalación standalone) + iconos
+  maskable. `sw.js` generado por `scripts/build-sw.mjs` con precache calculado del
+  artefacto (11 entradas: shells f4/f5 + bundles + workers + pdfExport + vendor
+  opencv 8.6MB + manifest + iconos); navigate network-first→caché, resto
+  cache-first→red; VERSION=sello de build con purga en activate. Registro
+  inyectado post-build (build-harness-f4/f5.mjs) con guardas `sw-off`/`sw=1`/
+  `webdriver` (aisla E2E con stubs sin editarlas). Rebuild f5/ además lleva la
+  cadena F6.1 al worker desplegado de F5 (seguía pre-F6.1, dependía del CDN).
+  E2E 3/3: instalación, **boot COMPLETO OFFLINE desde caché**, guarda; regresiones
+  verdes (319/319, tsc, 4 E2E). Evidencia: `PLAN_EVIDENCE/F6/pwa/`. Estado: F6.1/F6.2
+  esperan validación en dispositivo (instalable + modo avión).
 - **2026-09-25 (4) — F4 CERRADA:** validación ronda 2 multi-dispositivo. Humano
   aplicó los 3 parches (typo editBtn + editor ronda 1 + fellBack stale;
   verificado byte-exacto en origin/main) y exportó 2 ZIPs del colector:

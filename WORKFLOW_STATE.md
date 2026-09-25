@@ -168,6 +168,26 @@
   tests, tsc limpio. Evidencia: PLAN_EVIDENCE/F4-validacion/ (ronda 1).
   ✅ PAGADO en ronda 2 (2026-09-25): humano aplicó los parches y repitió
   editor + diana + colector — ver F4 CERRADA en Tareas Completadas.
+- **F6.2 PWA offline (sandbox · 2026-09-25):** service worker hecho a mano (~120
+  líneas, SIN Workbox-CDN: sería otro SPOF tras el hallazgo F6.1 — desviación
+  documentada en el reporte) + `manifest.webmanifest` (start_url → harness F5) +
+  iconos 192/512 maskable. `sw.js` GENERADO por `scripts/build-sw.mjs` con precache
+  calculado del artefacto (cierre de chunks incl. worker y pdfExport; 11 entradas);
+  estrategia: navigate network-first→caché, resto cache-first→red, cross-origin
+  intacto; VERSION=sello de build → purga en activate. Registro inyectado en los
+  HTML construidos (build-harness-f4/f5.mjs, idempotente) con guardas `sw-off` /
+  `sw=1` / webdriver (aisla las E2E con stubs SIN editarlas). **BONUS:** rebuild de
+  `f5/` lleva la cadena F6.1 al worker desplegado de F5 (que seguía en `DU2EpkNr`
+  pre-F6.1 → f5 dependía del CDN en dispositivo). E2E nueva 3/3: instalación +
+  **boot COMPLETO OFFLINE desde caché** (worker + opencv 8.6MB) + guarda. Regresiones
+  verdes (319/319, tsc, 4 E2E). Evidencia: `PLAN_EVIDENCE/F6/pwa/`. ⏳ Humano:
+  `git am` + push + instalar en 2 dispositivos + 2º arranque en modo avión.
+- **F6.1 opencv self-host (sandbox · 2026-09-25):** `vendor/opencv-4.5.5.js`
+  (build techstark, línea Module revertida a global) + cadena vendor→CDN con
+  observabilidad (`opencvCandidateUrls` pura + 5 tests + panel `#mOpencv` en f4);
+  E2E 2/2 (boot REAL local + SPOF muerto recuperable). Commit 8444441 aplicado y
+  desplegado por el humano. ⏳ Humano: confirmar en dispositivo
+  `#mOpencv=vendor/opencv-4.5.5.js`.
 - **F4-fix-typo-editBtn cerrada (harness · 2026-09-25):** tras aplicar y pushear
   el fix de arranque (`6403db4`), el humano reportó F4 SIGUE muerto en dispositivo
   (videos f3/f4 enviados; no llegaron al sandbox). Causa raíz REAL encontrada y
@@ -270,7 +290,7 @@ de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
   harness CER Tesseract por modo/categoría.
 
 ## Decisiones de Arquitectura
-- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F5 multipágina + 4 modos + PDF** (F4 CERRADA 2026-09-25, validación humana completa en 2 dispositivos; F6 en curso en sandbox) - **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
+- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F5 multipágina + 4 modos + PDF** (F4 CERRADA 2026-09-25, validación humana completa en 2 dispositivos; F6 en curso en sandbox: **F6.1 opencv self-host** y **F6.2 PWA offline** implementados y verificados E2E sobre el artefacto, pendientes de validación en dispositivo; F5 validación humana pendiente) - **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
   adaptación: T4.1 `opencode mcp list` en TUI.
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;
   aviso de cap >3500px añadido al log. Re-validado sin errores.
