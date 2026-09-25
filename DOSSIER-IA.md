@@ -146,12 +146,27 @@ mobile-scanner/
 ## 9. Pendientes actuales (por si te toca trabajar)
 
 1. **F5:** revisión visual humana del banding CLAHE (D-F5-b) + harness CER Tesseract.
-2. **F6 (EN CURSO, código en sandbox):** self-host opencv.js (mata el punto único de fallo del CDN docs.opencv.org), PWA (manifest + service worker, cachear opencv 8MB → 2º arranque <2s), telemetría Sentry opt-in (falta DSN del humano), endurecimiento de errores (permisos, rotación, background), checklist de regresión semanal.
-3. **Del humano (cuando pueda):** F5 revisión visual en dispositivo · probar instalación PWA en ambos teléfonos · crear proyecto Sentry y compartir DSN · aplicar parches pendientes.
+2. **F6 (EN CURSO):** self-host opencv.js ✓ desplegado · PWA offline ✓ desplegada · telemetría Sentry opt-in ✓ desplegada (falta DSN del humano) · **F6.4 robustez de errores + matriz/checklist semanal ✓ en sandbox** (parche pendiente de aplicar) → cierra §F6 salvo validación en dispositivo.
+3. **Del humano (cuando pueda):** F5 revisión visual en dispositivo · pruebas A/B/PWA + primera ronda del checklist W en ambos teléfonos · crear proyecto Sentry y compartir DSN · `git am f6.4-robustez.patch` + push.
 4. Backlog: build custom OpenCV (~2-3MB solo imgproc) pre-producción · F6.5 ONNX (condicional a telemetría).
 
 ## 10. Changelog del dossier
 
+- **2026-09-26 (7):** F6.4 robustez de errores + matriz de dispositivos (cierra
+  las filas restantes de §F6). `cameraErrors.ts` puro (clasificación por name y
+  por mensaje → código/título/pista/retryable) + `CameraInitError` con `.code` y
+  `.cause` (mensajes históricos intactos); init() conserva el error del
+  desbloqueo (permiso denegado ya no se disfraza de "sin cámaras");
+  `lifecycle.ts` (attachLifecycle + trackIsLive) y `extendDeadline()` en el
+  orquestador (el tiempo en background no cuenta para el timeout de 8s);
+  harnesses f4/f5: catch clasificado SOLO para errores de cámara — la cadena de
+  candidatos de opencv pasa intacta (hallazgo de la regresión F6.1), pérdida de
+  track = banner recuperable que re-adquiere SOLO la cámara sin reconstruir la
+  app, `watchOrientation` (D2) conectado por fin; `docs/matriz-dispositivos.md`
+  (matriz + checklist semanal W1-W11 + log de rondas). +26 unit (356/356, tsc
+  limpio) + E2E 4/4 (permiso denegado, rotación, background, track ended) +
+  regresión completa verde (7 suites E2E). Quirk headless documentado: denegación
+  → NotSupportedError; el disparo real va en el checklist W4.
 - **2026-09-25 (6):** F6.3 telemetría opt-in estilo Sentry. Núcleo puro
   (`parseDsn`/`redactMessage`/`buildEnvelope`/`createTelemetry`) + wiring DOM
   ligera (botón OFF/ON en el panel de f4/f5, hooks ADITIVOS de

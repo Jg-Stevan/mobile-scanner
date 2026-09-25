@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CameraProbe, MediaDeps } from '../src/camera/CameraController';
 import {
   CameraController,
+  CameraInitError,
   IDEAL_CAPTURE_WIDTH,
   chooseMainCamera,
   hasRealAutofocus,
@@ -351,5 +352,58 @@ describe('ramas de error + defaults de navegador', () => {
     expect(p.capabilities.focusModes).toEqual(['continuous']);
     expect(p.deviceId).toBe('c0');
     vi.unstubAllGlobals();
+  });
+});
+
+describe('F6.4: CameraInitError.code + getTrack()', () => {
+  it('cascada falla con NotAllowedError → code "permission", mensaje /3 niveles/ intacto y .cause preservado', async () => {
+    const { deps } = setup({ 'main-0': MAIN }, async () => {
+      throw new DOMException('Permission denied', 'NotAllowedError');
+    });
+    const err: unknown = await new CameraController(deps).init().catch((e) => e);
+    expect(err).toBeInstanceOf(CameraInitError);
+    const e = err as InstanceType<typeof CameraInitError>;
+    expect(e.message).toMatch(/3 niveles/);
+    expect(e.code).toBe('permission');
+    expect(e.cause).toBeInstanceOf(DOMException);
+    expect((e.cause as DOMException).name).toBe('NotAllowedError');
+  });
+  it('cascada falla con NotReadableError → code "busy" (cámara ocupada)', async () => {
+    const { deps } = setup({ 'main-0': MAIN }, async () => {
+      throw new DOMException('in use', 'NotReadableError');
+    });
+    const err = await new CameraController(deps).init().catch((e) => e);
+    expect((err as InstanceType<typeof CameraInitError>).code).toBe('busy');
+  });
+  it('sin cámaras → CameraInitError code "no-device" (mensaje /sin cámaras/ intacto)', async () => {
+    const { deps } = setup({}, async () => streamOf(trackStub({}, {})));
+    const err: unknown = await new CameraController(deps).init().catch((e) => e);
+    expect(err).toBeInstanceOf(CameraInitError);
+    const e = err as InstanceType<typeof CameraInitError>;
+    expect(e.message).toMatch(/sin cámaras/);
+    expect(e.code).toBe('no-device');
+  });
+  it('permiso denegado: unlock NotAllowedError + probes mueren → code "permission" (no "no-device")', async () => {
+    const deny = async () => {
+      throw new DOMException('Permission denied', 'NotAllowedError');
+    };
+    const { deps } = setup({ 'main-0': MAIN }, deny);
+    deps.probeDevice = deny; // sin permiso, TODO probe muere (labels vacíos)
+    const err: unknown = await new CameraController(deps).init().catch((e) => e);
+    expect(err).toBeInstanceOf(CameraInitError);
+    const e = err as InstanceType<typeof CameraInitError>;
+    expect(e.message).toMatch(/sin cámaras/); // mensaje histórico intacto
+    expect(e.message).toMatch(/permiso/); // + causa real visible
+    expect(e.code).toBe('permission');
+  });
+  it('getTrack(): null pre-init → track post-init → null tras stop', async () => {
+    const track = trackStub({ width: 640, height: 480 }, {}) as unknown as MediaStreamTrack;
+    const { deps } = setup({ 'main-0': MAIN }, async () => streamOf(track));
+    const ctl = new CameraController(deps);
+    expect(ctl.getTrack()).toBeNull();
+    await ctl.init({ deviceId: 'main-0' });
+    expect(ctl.getTrack()).toBe(track);
+    ctl.stop();
+    expect(ctl.getTrack()).toBeNull();
   });
 });

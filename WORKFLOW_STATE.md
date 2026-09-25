@@ -1,8 +1,35 @@
 # WORKFLOW_STATE — mobile-scanner
 
-Última actualización: 2026-09-24
+Última actualización: 2026-09-26
 
 ## Tareas Completadas
+- **F6.4 robustez de errores + matriz de dispositivos (sandbox · 2026-09-26):**
+  PLAN §F6 filas "Errores" + "Matriz de dispositivos".
+  (a) `src/camera/cameraErrors.ts` PURO: `classifyCameraError` (por `err.name`
+  Y por mensaje — cubre errores envueltos) → código + título + pista accionable
+  + retryable; `CameraInitError` (code + cause) en CameraController conservando
+  mensajes históricos (/3 niveles/, /sin cámaras/) — tests antiguos intactos.
+  (b) init() conserva el error del DESBLOQUEO: permiso denegado + probes muertos
+  ya no mienten como "sin cámaras" (code `permission`).
+  (c) `src/camera/lifecycle.ts`: `attachLifecycle` (visibilidad inyectable) +
+  `trackIsLive`; `ScanOrchestrator.extendDeadline()` re-arma el plazo de 8s al
+  volver de background (el tiempo oculto no es falta de detección) — no-op fuera
+  de `detecting`. FrameLoop NO se toca: rAF/rVFC ya se congelan solos.
+  (d) Wiring f4/f5: catch clasificado SOLO para CameraInitError (los errores de
+  la cadena opencv pasan con sus candidatos intactos — hallazgo de la propia
+  regresión F6.1), track `ended` → banner recuperable que NO reconstruye la app
+  (reintento = re-adquirir SOLO la cámara; galería/colector conservados),
+  `watchOrientation` conectado por fin (D2), background→visible valida el track.
+  (e) `docs/matriz-dispositivos.md`: matriz (SM-A566E, iPhone 17 Pro, Playwright)
+  + checklist semanal W1-W11 + log de rondas.
+  Tests: +26 unit (356/356, tsc limpio). E2E nueva `test-f64-robustez.mjs` 4/4:
+  permiso denegado→banner clasificado, rotación en vivo→overlay re-encadrado,
+  background→extendDeadline (spy) + track vivo, track ended→recuperación completa.
+  NOTA entorno: headless mapea denegación a NotSupportedError (quirk) → Caso 1
+  inyecta NotAllowedError estándar; el disparo real va en checklist W4.
+  Regresión completa verde (7 suites E2E). Evidencia: `PLAN_EVIDENCE/F6/robustez/`.
+  ⏳ Humano: `git am f6.4-robustez.patch` + push + primera ronda del checklist
+  semanal (rotación/background/permisos revocados en 2 dispositivos).
 - **Adaptación del entorno** (PLAN_ADAPTACION Fases 0-5): 8 agentes globales, AGENTS.md,
   WORKFLOW_STATE.md, 3 skills de dominio, comando `/spike` + `/ship`, HTML del spike F0.
   Evidencias en `PLAN_EVIDENCE/adaptacion/`.
@@ -303,11 +330,7 @@ de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
   harness CER Tesseract por modo/categoría.
 
 ## Decisiones de Arquitectura
-- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F5 multipágina + 4 modos + PDF** (F4 CERRADA 2026-09-25, validación humana completa en 2 dispositivos; F5 validación humana pendiente) - **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
-  adaptación: T4.1 `opencode mcp list` en TUI. F6 en curso: **F6.1 opencv self-host,
-  F6.2 PWA offline y F6.3 telemetría opt-in** implementados y verificados E2E en
-  sandbox, pendientes de validación en dispositivo (aplicar parches EN ORDEN:
-  f6.2-pwa → f6.3-telemetria).
+- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F6 endurecimiento** — F6.1+6.2+6.3 APLICADOS y desplegados en Pages (push humano 2026-09-26); **F6.4 robustez+matriz implementado en sandbox** (parche f6.4-robustez pendiente de `git am`); pendiente humano: validación en dispositivo (pruebas A/B/PWA + checklist W). F6.5 condicional después.
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;
   aviso de cap >3500px añadido al log. Re-validado sin errores.
 - **Aprobación humana 2026-09-22 (FPS, condicional):** estrategia A-primero —

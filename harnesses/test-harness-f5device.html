@@ -73,7 +73,9 @@ label{display:inline-flex;align-items:center;gap:5px}
 <script type="module">
 import detectionWorkerUrl from '../src/workers/detection.worker.ts?worker&url';
 import { startFrameLoop } from '../src/camera/frameLoop.ts';
-import { CameraController } from '../src/camera/CameraController.ts';
+import { CameraController, CameraInitError } from '../src/camera/CameraController.ts';
+import { classifyCameraError } from '../src/camera/cameraErrors.ts';
+import { attachLifecycle, trackIsLive } from '../src/camera/lifecycle.ts';
 import { ScannerView } from '../src/ui/ScannerView.ts';
 import { ScoreView } from '../src/ui/ScoreView.ts';
 import { ScanOrchestrator } from '../src/scan/ScanOrchestrator.ts';
@@ -87,8 +89,64 @@ wireTelemetry(window,document,document.getElementById('tMount'));
 const $=id=>document.getElementById(id);
 const toast=s=>{$('toast').textContent=s};
 const showErr=s=>{$('err').textContent=s};
+
+// F6.4 — robustez de cámara. Pérdida de track (permiso revocado en vivo,
+// otra app se queda la cámara, iOS mata el stream en background): banner
+// recuperable SIN reconstruir la app — el frameLoop y los workers se quedan
+// vivos (el backpressure tolera video muerto) y el reintento SOLO re-adquiere
+// la cámara; galería/páginas se conservan intactas.
+const MSG_LOST='Cámara perdida (permiso revocado u otra app la tomó).';
+function markCamLost(msg){
+  if(camLost)return;
+  camLost=true;started=false;
+  $('shutterBtn').disabled=true;$('cerBtn').disabled=true;
+  showErr(msg+' Toca Iniciar para reintentar (la galería se conserva).');
+  $('startBtn').disabled=false;
+}
+function wireCameraGuards(){
+  const tr=ctl&&ctl.getTrack();
+  if(tr)tr.addEventListener('ended',()=>markCamLost(MSG_LOST));
+  // D2: re-perfilar al girar (profile fresco → mCam); ScannerView se
+  // auto-resizea en cada render.
+  if(ctl)ctl.watchOrientation(p=>{profile=p;$('mCam').textContent=`${p.label} (${p.trackWidth}×${p.trackHeight})`});
+}
+async function reactivateCamera(){
+  $('startBtn').disabled=true;
+  try{
+    if(new URLSearchParams(location.search).get('fake')==='1'){
+      $('v').srcObject=makeFakeCamera();
+      profile={label:'cámara sintética',trackWidth:640,trackHeight:480,capabilities:{torch:false,focusModes:['continuous']}};
+    }else{
+      ctl=CameraController.browser();profile=await ctl.init({video:$('v')});
+      wireCameraGuards();
+    }
+    await $('v').play();
+    $('mCam').textContent=`${profile.label} (${profile.trackWidth}×${profile.trackHeight})`;
+    camLost=false;started=true;
+    $('shutterBtn').disabled=false;$('cerBtn').disabled=false;
+    $('torchBtn').disabled=!profile.capabilities.torch;
+    $('torchBtn').textContent=profile.capabilities.torch?'Torch: off':'Torch: n/a';
+    showErr('');toast('Cámara recuperada');
+    if(window.__f5orch)__f5orch.extendDeadline();
+  }catch(e){
+    if(e instanceof CameraInitError){const info=classifyCameraError(e);showErr(`Reintento: ${info.title}. ${info.hint}`)}
+    else showErr(`Reintento: ${e.message}`);
+    $('startBtn').disabled=false;
+  }
+}
+// Background: rAF/rVFC se congelan solos; al volver se re-arma el plazo de 8s
+// (el tiempo oculto no cuenta como falta de detección) y se valida el track.
+attachLifecycle({
+  onHidden(){},
+  onVisible(){
+    if(!started)return;
+    if(window.__f5orch)__f5orch.extendDeadline();
+    if(!trackIsLive(ctl&&ctl.getTrack()))markCamLost('Cámara no disponible tras segundo plano.');
+  },
+});
 let started=false;
 let ctl=null;
+let camLost=false;
 let profile=null;
 let lastPhoto=null;
 let lastSourceBlob=null;
@@ -271,6 +329,7 @@ async function openCamera(){
       profile={label:'cámara sintética',trackWidth:640,trackHeight:480,capabilities:{torch:false,focusModes:['continuous']}};
     }else{
       ctl=CameraController.browser();profile=await ctl.init({video:$('v')});
+      wireCameraGuards();
     }
     await $('v').play();
     $('mCam').textContent=`${profile.label} (${profile.trackWidth}×${profile.trackHeight})`;
@@ -311,7 +370,13 @@ async function openCamera(){
     $('shutterBtn').disabled=false;$('cerBtn').disabled=false;
     $('torchBtn').disabled=!profile.capabilities.torch;
     $('torchBtn').textContent=profile.capabilities.torch?'Torch: off':'Torch: n/a';
-  }catch(e){showErr(`Inicio: ${e.message}`);$('startBtn').disabled=false}
+  }catch(e){
+    // F6.4: clasificar SOLO CameraInitError; el resto (cadena opencv, timeouts
+    // de worker) pasa intacto con su detalle real.
+    if(e instanceof CameraInitError){const info=classifyCameraError(e);showErr(`Inicio: ${info.title}. ${info.hint}`)}
+    else showErr(`Inicio: ${e.message}`);
+    $('startBtn').disabled=false;
+  }
 }
 
 function normalizeOcr(text){return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim()}
@@ -381,7 +446,7 @@ async function runStress(durationMs=600000){
   return result;
 }
 
-$('startBtn').onclick=()=>void openCamera();
+$('startBtn').onclick=()=>void (camLost?reactivateCamera():openCamera());
 $('shutterBtn').onclick=()=>started&&void window.__f5orch?.captureManual();
 let torchOn=false;
 $('torchBtn').onclick=async()=>{if(!ctl)return;const result=await ctl.setTorch(!torchOn);if(result!=='unsupported')torchOn=!torchOn;$('torchBtn').textContent=result==='unsupported'?'Torch: n/a':`Torch: ${torchOn?'ON':'off'}`};

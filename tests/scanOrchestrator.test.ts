@@ -964,3 +964,30 @@ describe('F4: edición de esquinas (FSM editing)', () => {
 });
 
 
+
+describe('F6.4: extendDeadline (segundo plano)', () => {
+  it('CONTROL sin extend: >8s desde start → onTimeout (comportamiento histórico)', () => {
+    const t = setup();
+    t.ctl.start(); // firstAttempt = 0
+    t.feed(8500, null);
+    expect(t.events.timeouts).toBe(1);
+  });
+  it('con extendDeadline el tiempo oculto NO cuenta como falta de detección', () => {
+    const t = setup();
+    t.ctl.start(); // firstAttempt = 0
+    t.setNow(7000);
+    t.ctl.extendDeadline(); // re-arma: firstAttempt = 7000 (vuelta de background)
+    t.feed(7500, null); // 500ms desde el re-arme
+    expect(t.events.timeouts).toBe(0);
+    expect(t.ctl.getState()).toBe('detecting');
+  });
+  it('no-op fuera de detecting: idle no se reactiva ni dispara timeout', () => {
+    const t = setup();
+    t.ctl.stop();
+    t.setNow(99000);
+    t.ctl.extendDeadline();
+    t.feed(100000, null);
+    expect(t.ctl.getState()).toBe('idle');
+    expect(t.events.timeouts).toBe(0);
+  });
+});

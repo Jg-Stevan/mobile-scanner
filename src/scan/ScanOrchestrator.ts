@@ -335,6 +335,16 @@ export class ScanOrchestrator {
     this.setState('idle');
   }
 
+  /** F6.4 (background): re-arma el plazo de 8s sin tocar el estado. Al volver
+   *  de segundo plano los frames estuvieron congelados — sin esto, el primer
+   *  resultado dispararía el toast de timeout por tiempo oculto, no por falta
+   *  de detección real. No-op fuera de 'detecting' (no interrumpe editor). */
+  extendDeadline(): void {
+    if (this.state === 'detecting') {
+      this.firstAttempt = this.deps.now();
+    }
+  }
+
   /** Dispara el timeout de no-detección: 8s sin quad → toast. F2-b: sin
    *  vibración (solo visual — vibrar en timeout cada 8s era indistinguible de
    *  la captura y el humano lo reportó como confusión). */

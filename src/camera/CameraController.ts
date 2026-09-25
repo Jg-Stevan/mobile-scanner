@@ -5,6 +5,24 @@
 // en los defaults). La verificación en dispositivo físico es HUMANA (AGENTS.md).
 
 import type { CameraProfile } from '../core/types';
+import { classifyCameraError, type CameraErrorCode } from './cameraErrors';
+
+/** Error de arranque de cámara CON código clasificado (F6.4). Conserva el
+ *  mensaje histórico (los tests asertan /3 niveles/ y /sin cámaras/) y añade
+ *  .code para la UI + .cause para diagnóstico/telemetría. */
+export class CameraInitError extends Error {
+  readonly code: CameraErrorCode;
+  constructor(
+    message: string,
+    code: CameraErrorCode,
+    options?: { cause?: unknown },
+  ) {
+    super(message);
+    this.name = 'CameraInitError';
+    this.code = code;
+    if (options?.cause !== undefined) this.cause = options.cause;
+  }
+}
 
 /** Capacidades medidas de UNA cámara (vía track abierto temporalmente). */
 export interface CameraProbe {
@@ -150,11 +168,15 @@ export class CameraController {
     // Desbloqueo de etiquetas (F1-a): en origen fresco los labels/deviceIds
     // vienen vacíos hasta conceder permiso — se pide un stream genérico y se
     // cierra (patrón del spike). Sin cámara, enumerate lo confirma abajo.
+    // F6.4: el error del desbloqueo se CONSERVA — si los probes mueren todos
+    // (síntoma típico de permiso denegado) clasifica el fallo REAL en vez de
+    // mentir con "sin cámaras".
+    let unlockErr: unknown = null;
     try {
       const unlock = await this.deps.getUserMedia({ video: true });
       for (const t of unlock.getTracks()) t.stop();
-    } catch {
-      // Sigue a enumerate: dictamina si hay cámaras o no.
+    } catch (e) {
+      unlockErr = e; // Sigue a enumerate: dictamina si hay cámaras o no.
     }
     const devices = await this.deps.enumerateDevices();
     const videos = devices.filter((d) => d.kind === 'videoinput');
@@ -169,7 +191,19 @@ export class CameraController {
     let deviceId = opts.deviceId;
     if (deviceId === undefined) {
       const choice = chooseMainCamera(probes);
-      if (choice === null) throw new Error('sin cámaras videoinput disponibles');
+      if (choice === null) {
+        const unlockInfo = classifyCameraError(unlockErr);
+        if (unlockErr !== null && unlockInfo.code === 'permission') {
+          // enumerate devuelve lista con labels vacíos sin permiso: los probes
+          // fallan todos y parece "sin cámaras" — el desbloqueo dice la verdad.
+          throw new CameraInitError(
+            `sin cámaras videoinput disponibles (${unlockInfo.title.toLowerCase()})`,
+            'permission',
+            { cause: unlockErr },
+          );
+        }
+        throw new CameraInitError('sin cámaras videoinput disponibles', 'no-device');
+      }
       this.warnings.push(...choice.warnings);
       deviceId = choice.probe.deviceId;
     }
@@ -190,10 +224,16 @@ export class CameraController {
       }
     }
     if (this.stream === null) {
-      throw new Error(`getUserMedia falló en 3 niveles: ${String(lastErr)}`);
+      throw new CameraInitError(
+        `getUserMedia falló en 3 niveles: ${String(lastErr)}`,
+        classifyCameraError(lastErr).code,
+        { cause: lastErr },
+      );
     }
     const track = this.stream.getVideoTracks()[0];
-    if (track === undefined) throw new Error('stream sin video track');
+    if (track === undefined) {
+      throw new CameraInitError('stream sin video track', 'unknown');
+    }
     this.track = track;
     if (opts.video !== undefined) opts.video.srcObject = this.stream;
     this.profile = this.buildProfile();
@@ -202,6 +242,12 @@ export class CameraController {
 
   getProfile(): CameraProfile | null {
     return this.profile;
+  }
+
+  /** Track de video activo o null (F6.4: el harness escucha 'ended' para
+   *  detectar permiso revocado en vivo / cámara arrebatada por otra app). */
+  getTrack(): MediaStreamTrack | null {
+    return this.track;
   }
 
   /** Re-lee getSettings()/getCapabilities (D2: llamar al girar el teléfono). */

@@ -137,7 +137,9 @@
 <script type="module">
 import detectionWorkerUrl from '../src/workers/detection.worker.ts?worker&url';
 import { startFrameLoop } from '../src/camera/frameLoop.ts';
-import { CameraController } from '../src/camera/CameraController.ts';
+import { CameraController, CameraInitError } from '../src/camera/CameraController.ts';
+import { classifyCameraError } from '../src/camera/cameraErrors.ts';
+import { attachLifecycle, trackIsLive } from '../src/camera/lifecycle.ts';
 import { ScannerView, shouldSuggestPortrait, PORTRAIT_HINT } from '../src/ui/ScannerView.ts';
 import { ScoreView } from '../src/ui/ScoreView.ts';
 import { ScanOrchestrator } from '../src/scan/ScanOrchestrator.ts';
@@ -168,6 +170,8 @@ async function main() {
   const video = $('v');
   const ctl = CameraController.browser();
   const profile = await ctl.init({ video });
+  f4ctl = ctl;
+  f4WireGuards();
   await video.play();
   $('mCam').textContent = `${profile.label} (${profile.trackWidth}×${profile.trackHeight})`;
 
@@ -523,6 +527,7 @@ async function main() {
     },
   });
   orch.start();
+  window.__f4orch = orch;
 
   let torchOn = false;
   const capsTorch = profile.capabilities.torch;
@@ -619,6 +624,63 @@ async function main() {
 // ?autostart=1 se conserva para E2E/Playwright.
 let booted = false;
 let booting = false;
+// F6.4 — robustez de cámara (misma disciplina que f5: la app NO se
+// reconstruye; el reintento SOLO re-adquiere la cámara y el editor/colector
+// quedan intactos). Pérdida de track = permiso revocado en vivo, otra app,
+// o iOS matando el stream en background.
+let f4ctl = null;
+let f4camLost = false;
+function f4MarkCamLost(msg) {
+  if (f4camLost) return;
+  f4camLost = true;
+  $('shutterBtn').disabled = true;
+  showErr(msg + ' Toca Iniciar cámara para reintentar.');
+  const btn = $('startBtn');
+  btn.hidden = false;
+  btn.disabled = false;
+  btn.textContent = 'Iniciar cámara';
+}
+function f4WireGuards() {
+  const tr = f4ctl && f4ctl.getTrack();
+  if (tr) tr.addEventListener('ended', () => f4MarkCamLost('Cámara perdida (permiso revocado u otra app la tomó).'));
+  // D2: re-perfilar al girar; ScannerView se auto-resizea en cada render.
+  if (f4ctl) f4ctl.watchOrientation((p) => { $('mCam').textContent = `${p.label} (${p.trackWidth}×${p.trackHeight})`; });
+}
+async function f4Reactivate() {
+  const btn = $('startBtn');
+  btn.disabled = true;
+  try {
+    const video = $('v');
+    f4ctl = CameraController.browser();
+    const profile = await f4ctl.init({ video });
+    await video.play();
+    f4WireGuards();
+    $('mCam').textContent = `${profile.label} (${profile.trackWidth}×${profile.trackHeight})`;
+    f4camLost = false;
+    $('shutterBtn').disabled = false;
+    btn.hidden = true;
+    showErr('');
+    if (window.__f4orch) window.__f4orch.extendDeadline();
+  } catch (e) {
+    if (e instanceof CameraInitError) {
+      const info = classifyCameraError(e);
+      showErr(`Reintento: ${info.title}. ${info.hint}`);
+    } else {
+      showErr(`Reintento: ${e.message}`);
+    }
+    btn.disabled = false;
+  }
+}
+// Background: rAF/rVFC se congelan solos; al volver se re-arma el plazo de 8s
+// y se valida el track (iOS puede matar el stream en segundo plano).
+attachLifecycle({
+  onHidden() {},
+  onVisible() {
+    if (!booted || f4camLost) return;
+    if (window.__f4orch) window.__f4orch.extendDeadline();
+    if (!trackIsLive(f4ctl && f4ctl.getTrack())) f4MarkCamLost('Cámara no disponible tras segundo plano.');
+  },
+});
 async function boot() {
   if (booted || booting) return;
   booting = true;
@@ -631,14 +693,22 @@ async function boot() {
     btn.hidden = true;
     $('shutterBtn').disabled = false;
   } catch (e) {
-    showErr(`Inicio: ${e.message} — pulsa Iniciar cámara para reintentar`);
+    // F6.4: clasificar SOLO errores de cámara (CameraInitError). Los demás
+    // (ej. cadena de opencv del worker, con sus candidatos) pasan intactos —
+    // disfrazarlos de error de cámara sería mentir dos veces.
+    if (e instanceof CameraInitError) {
+      const info = classifyCameraError(e);
+      showErr(`Inicio: ${info.title}. ${info.hint} (pulsa Iniciar cámara para reintentar)`);
+    } else {
+      showErr(`Inicio: ${e.message} — pulsa Iniciar cámara para reintentar`);
+    }
     btn.disabled = false;
     btn.textContent = 'Iniciar cámara';
   } finally {
     booting = false;
   }
 }
-$('startBtn').onclick = () => { void boot(); };
+$('startBtn').onclick = () => { void (f4camLost ? f4Reactivate() : boot()); };
 if (new URLSearchParams(location.search).get('autostart') === '1') void boot();
 </script>
 </body>
