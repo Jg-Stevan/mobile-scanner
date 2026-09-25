@@ -1,18 +1,18 @@
-/* GENERADO por scripts/build-sw.mjs (mscan-20260925164736) — NO editar a mano.
+/* GENERADO por scripts/build-sw.mjs (mscan-20260925170836) — NO editar a mano.
  * F6.2 PWA: app shell + vendor opencv cacheados; offline tras la 1ª sesión.
  * Estrategia: navigate=network-first→cache; resto same-origin=cache-first→red;
  * cross-origin (CDN fallback) intacto. */
-const KEY = 'mscan-20260925164736';
+const KEY = 'mscan-20260925170836';
 const SHELL = KEY + '-shell';
 const RUNTIME = KEY + '-runtime';
 const PRECACHE = [
   "f4/test-harness-f4device.html",
   "f4/assets/detection.worker-BdNYTfAg.js",
-  "f4/assets/test-harness-f4device-CRdX8SA9.js",
+  "f4/assets/test-harness-f4device-Du_3--sW.js",
   "f5/test-harness-f5device.html",
   "f5/assets/detection.worker-BdNYTfAg.js",
   "f5/assets/pdfExport-Cbr_t6PA.js",
-  "f5/assets/test-harness-f5device-DJZDUq0c.js",
+  "f5/assets/test-harness-f5device-C2sj-X1n.js",
   "vendor/opencv-4.5.5.js",
   "manifest.webmanifest",
   "icons/icon-192.png",

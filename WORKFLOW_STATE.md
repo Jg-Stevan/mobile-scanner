@@ -168,6 +168,19 @@
   tests, tsc limpio. Evidencia: PLAN_EVIDENCE/F4-validacion/ (ronda 1).
   ✅ PAGADO en ronda 2 (2026-09-25): humano aplicó los parches y repitió
   editor + diana + colector — ver F4 CERRADA en Tareas Completadas.
+- **F6.3 telemetría opt-in (sandbox · 2026-09-25):** núcleo puro
+  `src/telemetry/telemetry.ts` (parseDsn + redactMessage + buildEnvelope +
+  createTelemetry) + wiring `harnessTelemetry.ts` (botón OFF/ON en panel,
+  hooks ADITIVOS error/unhandledrejection, `window.__telemetry`). Principios:
+  OFF por defecto (0 bytes salen sin opt-in — probado en E2E), SIN SDK por CDN
+  (formato envelope oficial de Sentry con send propio — lección F6.1),
+  redacción doble de query strings/blob:/file: (jamás fotos ni quads), rate
+  limit 20 envíos/sesión que cuenta también los fallidos (anti-martilleo),
+  DSN por `localStorage` (vacío ⇒ solo conteo local honesto). 11 tests unit +
+  E2E 4 casos (OFF=0 POSTs, envelope válido con token redactado, rate limit
+  20+6, persistencia). Regresiones verdes (330/330, 6 E2E). Evidencia:
+  `PLAN_EVIDENCE/F6/telemetry/`. ⏳ Humano: `git am` (después de f6.2) + push;
+  DSN real cuando exista cuenta Sentry.
 - **F6.2 PWA offline (sandbox · 2026-09-25):** service worker hecho a mano (~120
   líneas, SIN Workbox-CDN: sería otro SPOF tras el hallazgo F6.1 — desviación
   documentada en el reporte) + `manifest.webmanifest` (start_url → harness F5) +
@@ -290,8 +303,11 @@ de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
   harness CER Tesseract por modo/categoría.
 
 ## Decisiones de Arquitectura
-- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F5 multipágina + 4 modos + PDF** (F4 CERRADA 2026-09-25, validación humana completa en 2 dispositivos; F6 en curso en sandbox: **F6.1 opencv self-host** y **F6.2 PWA offline** implementados y verificados E2E sobre el artefacto, pendientes de validación en dispositivo; F5 validación humana pendiente) - **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
-  adaptación: T4.1 `opencode mcp list` en TUI.
+- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F5 multipágina + 4 modos + PDF** (F4 CERRADA 2026-09-25, validación humana completa en 2 dispositivos; F5 validación humana pendiente) - **Entorno adaptado y verificado** (automatizable + TUI de cierre). Único pendiente del plan de
+  adaptación: T4.1 `opencode mcp list` en TUI. F6 en curso: **F6.1 opencv self-host,
+  F6.2 PWA offline y F6.3 telemetría opt-in** implementados y verificados E2E en
+  sandbox, pendientes de validación en dispositivo (aplicar parches EN ORDEN:
+  f6.2-pwa → f6.3-telemetria).
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;
   aviso de cap >3500px añadido al log. Re-validado sin errores.
 - **Aprobación humana 2026-09-22 (FPS, condicional):** estrategia A-primero —

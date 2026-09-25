@@ -78,6 +78,7 @@
 <div class="metrics">
   <div>Cámara: <b id="mCam">—</b></div>
   <div>opencv: <b id="mOpencv">—</b></div>
+  <div id="tMount" style="grid-column:1/-1"></div>
   <div>Estado: <b id="mState">—</b></div>
   <div>FPS: <b id="mFps">—</b></div>
   <div>Contornos: <b id="mCont">—</b></div>
@@ -144,6 +145,10 @@ import { AdjustEditor } from '../src/ui/AdjustEditor.ts';
 import { DatasetStore, openDatasetDB, persistDatasetStorage } from '../src/export/datasetStore.ts';
 import { cdeReport, DIANA_DEFAULT_WIDTH_MM } from '../src/core/dianaMath.ts';
 import { CONDITION_TAGS } from '../src/core/dataCollect.ts';
+import { wireTelemetry } from '../src/telemetry/harnessTelemetry.ts';
+
+// F6.3 — telemetría opt-in (OFF por defecto; panel + hooks de error globales)
+wireTelemetry(window, document, document.getElementById('tMount'));
 
 const $ = (id) => document.getElementById(id);
 const toast = (s) => { $('toast').textContent = s; };

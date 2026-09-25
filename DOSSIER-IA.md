@@ -152,6 +152,20 @@ mobile-scanner/
 
 ## 10. Changelog del dossier
 
+- **2026-09-25 (6):** F6.3 telemetría opt-in estilo Sentry. Núcleo puro
+  (`parseDsn`/`redactMessage`/`buildEnvelope`/`createTelemetry`) + wiring DOM
+  ligera (botón OFF/ON en el panel de f4/f5, hooks ADITIVOS de
+  error/unhandledrejection, `window.__telemetry`). Desviaciones documentadas del
+  plan: SIN SDK de Sentry por CDN (otro SPOF — lección F6.1) → se envía el
+  formato envelope oficial con `send()` propio (~10 líneas); OFF POR DEFECTO —
+  sin opt-in no sale un byte (E2E lo prueba con 0 POSTs); redacción doble de
+  query strings/blob:/file: (jamás fotos ni quads); rate limit 20 envíos/sesión
+  que cuenta también los fallidos (anti-martilleo, hallazgo de la E2E); DSN por
+  localStorage — vacío ⇒ solo conteo local honesto. 11 tests unit (330/330) +
+  E2E 4 casos + 6 regresiones verdes. Evidencia: `PLAN_EVIDENCE/F6/telemetry/`.
+  Nota de ronda: los E2E f4 antiguos requieren servidor :8477 con raíz en f4/
+  (antes lo proveía un proceso zombi — documentado). Siguiente: F6.4
+  endurecimiento + self-host Tesseract del harness CER (mismo riesgo CDN).
 - **2026-09-25 (5):** F6.2 PWA offline. Service worker hecho a mano (~120 líneas,
   desviación documentada del «Workbox» del plan: Workbox por CDN = otro SPOF tras
   F6.1) + manifest (start_url → harness F5, instalación standalone) + iconos

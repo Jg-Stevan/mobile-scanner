@@ -58,6 +58,7 @@ label{display:inline-flex;align-items:center;gap:5px}
 <div>Refinado: <b id="mRef">—</b></div>
 <div>Salida: <b id="mOut">—</b></div>
 <div>Modo export: <b id="mMode">color</b></div>
+<div id="tMount"></div>
 </div>
 <div><span id="thumbLabel">ÚLTIMA CAPTURA</span><br><canvas id="thumb" width="320" height="240"></canvas></div>
 <div class="row"><button id="pdfSizeBtn">Formato PDF: Letter</button><button id="pdfBtn">Exportar PDF</button><button id="refreshBtn">Actualizar galería</button></div>
@@ -78,6 +79,10 @@ import { ScoreView } from '../src/ui/ScoreView.ts';
 import { ScanOrchestrator } from '../src/scan/ScanOrchestrator.ts';
 import { PageGallery } from '../src/ui/PageGallery.ts';
 import { PageStore, openPageDB, persistPageStorage } from '../src/export/pageStore.ts';
+import { wireTelemetry } from '../src/telemetry/harnessTelemetry.ts';
+
+// F6.3 — telemetría opt-in (OFF por defecto; panel + hooks de error globales)
+wireTelemetry(window,document,document.getElementById('tMount'));
 
 const $=id=>document.getElementById(id);
 const toast=s=>{$('toast').textContent=s};
