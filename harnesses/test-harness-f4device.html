@@ -63,7 +63,8 @@
 <div class="row">
   <canvas id="ring" width="84" height="84"></canvas>
   <div>
-    <button id="shutterBtn">📷 Shutter manual</button>
+    <button id="startBtn">Iniciar cámara</button>
+    <button id="shutterBtn" disabled>📷 Shutter manual</button>
     <button id="editBtn" disabled>✏️ Editar esquinas</button>
     <button id="torchBtn">Torch: ?</button>
   </div>
@@ -561,9 +562,33 @@ async function main() {
   window.__tags = CONDITION_TAGS;
 }
 
-if (new URLSearchParams(location.search).get('autostart') === '1') main().catch((e) => {
-  document.getElementById('out').textContent = 'ERROR: ' + e.message;
-});
+// F4-fix arranque: botón explícito (patrón F5 probado en dispositivo) — el
+// boot deja de ser all-or-nothing: un fallo (ej. CDN opencv con Cloudflare
+// 403 / timeout 90s) se muestra en #err y PERMITE reintentar sin recargar.
+// ?autostart=1 se conserva para E2E/Playwright.
+let booted = false;
+let booting = false;
+async function boot() {
+  if (booted || booting) return;
+  booting = true;
+  const btn = $('startBtn');
+  btn.disabled = true;
+  btn.textContent = 'Cargando opencv…';
+  try {
+    await main();
+    booted = true;
+    btn.hidden = true;
+    $('shutterBtn').disabled = false;
+  } catch (e) {
+    showErr(`Inicio: ${e.message} — pulsa Iniciar cámara para reintentar`);
+    btn.disabled = false;
+    btn.textContent = 'Iniciar cámara';
+  } finally {
+    booting = false;
+  }
+}
+$('startBtn').onclick = () => { void boot(); };
+if (new URLSearchParams(location.search).get('autostart') === '1') void boot();
 </script>
 </body>
 </html>

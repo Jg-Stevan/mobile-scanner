@@ -135,6 +135,19 @@
   warps 0 errores) cerradas.
 
 ## Tareas en Progreso
+- **F4-fix-arranque cerrada (harness · 2026-09-25):** el humano reportó F4 muerto
+  (shutter manual y auto sin respuesta, incluso con `?autostart=1`). Diagnóstico
+  Playwright: boot all-or-nothing — `main()` sin catch utilizable; un fallo del
+  CDN de opencv (reproducido: docs.opencv.org 403 challenge Cloudflare vía
+  `importScripts`, no resoluble en worker) dejaba preview vivo + botones muertos
+  + error enterrado en `#out`. Fix SOLO harness (patrón F5 probado en
+  dispositivo): botón `Iniciar cámara` + error visible en `#err` + reintento con
+  guard + shutter deshabilitado hasta boot completo; `?autostart=1` conservado
+  para E2E. Redeploy `f4/` con generación previa de assets conservada (higiene).
+  314/314 tests, tsc limpio. Hallazgo de infra registrado: fragilidad CDN opencv
+  → propuesta de vendorizar 4.5.5 en repo (F6/PWA, ver
+  `PLAN_EVIDENCE/F4-fix-arranque/`). ⏳ El humano valida F4 con el harness
+  redeployado (URL sin parámetros).
 - **F4 en curso (código · 2026-09-24):** editor manual de esquinas + dataset F6.5 +
   diana. FSM `editing` en ScanOrchestrator (`openEditor`/`submitEditedQuad`/
   `revertEditedQuad`/`cancelEditing`; `submit` ok → 'captured' + cooldown normal;
@@ -203,6 +216,8 @@ de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
   adaptación (CLI cuelga; verificación visual TUI).
 - **F4 validación humana en dispositivo físico** — ⏳ edición táctil de esquinas
   (loupe) + colector de dataset opt-in + diana de calibración (±X mm al 95%).
+  (2026-09-25: primer intento bloqueado por fallo de arranque del harness —
+  corregido en F4-fix-arranque; reintentar con URL sin parámetros.)
 - **F5 revisión visual humana** — ⏳ banding CLAHE (D-F5-b) + resultados del
   harness CER Tesseract por modo/categoría.
 

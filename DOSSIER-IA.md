@@ -152,6 +152,12 @@ mobile-scanner/
 
 ## 10. Changelog del dossier
 
+- **2026-09-25:** fix harness F4 (F4-fix-arranque): boot recuperable con botón
+  "Iniciar cámara" + error visible + reintento (patrón F5). Hallazgo de
+  infraestructura: docs.opencv.org responde 403 challenge Cloudflare a
+  `importScripts` en algunos contextos → fragilidad documentada con propuesta
+  de vendorizar opencv.js 4.5.5 en el repo para F6/PWA. Estado: sin cambios de
+  fases (F4/F5 siguen en curso, pendiente humano).
 - **2026-09-24:** creación del dossier. Corte: F4 código cerrado pendiente humano, F5 en curso (314/314).
 
 **Regla de mantenimiento:** cada cierre de tarea o /ship actualiza las secciones 4 (Estado) y 10 (Changelog). El resto cambia solo si hay decisión nueva de arquitectura.
