@@ -152,6 +152,14 @@ mobile-scanner/
 
 ## 10. Changelog del dossier
 
+- **2026-09-25 (3):** F4 validación ronda 1: humano verifica arranque OK y
+  reporta 3 hallazgos del editor. Fix del grave: "confirmar muerto" en captura
+  manual = quad cruzado → 'invalid' con toast invisible bajo el overlay → ahora
+  validación en vivo (borde rojo + banner) + #editorErr + .catch. Lupa al lado
+  opuesto del dedo (loupeCenter). Badges de refine solo con info real. Rebuild
+  f4/ (Cd1nBD7V), E2E del artefacto PASS, 314/314. Nota de infra: el gateway de
+  adjuntos del sandbox falla sistemáticamente (RAR/videos/imágenes/ZIP) → la
+  evidencia humana se reporta como texto. Estado: sin cambios de fases.
 - **2026-09-25 (2):** fix harness F4 (F4-fix-typo-editBtn): causa raíz REAL del
   F4 muerto en dispositivo era un typo `$('#editBtn')` (getElementById con '#'
   → null → TypeError → main() moría antes del frameLoop y del handler del

@@ -10,6 +10,7 @@
 // Constantes nuevas SOLO estas tres (orden F4, cada una con origen abajo).
 
 import type { Quadrilateral } from '../core/types';
+import { validateQuad } from '../core/geometry';
 import { displayRect, type DisplayRect } from './ScannerView';
 
 /** Lado mayor del preview del editor (orden F4 punto 1: "preview downscale
@@ -134,6 +135,26 @@ export function loupeRect(
 ): { x: number; y: number; w: number; h: number } {
   const r = Math.max(1, radius);
   return { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r };
+}
+
+/** Centro del loupe (F4 validación humana 2026-09-25: "la lupa aparece debajo
+ *  del dedo — que aparezca en el lado opuesto"): se dibuja en el lado VERTICAL
+ *  opuesto al handle (arriba por defecto; abajo si el círculo no cabe arriba).
+ *  X clampeada al canvas. La FUENTE sigue centrada en el handle: el crosshair
+ *  del loupe marca siempre el punto de corte real. Función pura (testeable). */
+export function loupeCenter(
+  hx: number,
+  hy: number,
+  canvasW: number,
+  canvasH: number,
+  radius: number = EDITOR_LOUPE_RADIUS,
+  gap: number = 14,
+): { x: number; y: number } {
+  const r = Math.max(1, radius);
+  const x = Math.min(Math.max(hx, r), Math.max(r, canvasW - r));
+  const y = hy - (r + gap);
+  if (y - r >= 0) return { x, y };
+  return { x, y: Math.min(hy + r + gap, Math.max(r, canvasH - r)) };
 }
 
 /** Badges de revisión por lado (orden F4 punto 1: "Badge por lado si
@@ -330,9 +351,13 @@ export class AdjustEditor {
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
     ctx.fill('evenodd');
 
-    // Polígono.
-    ctx.strokeStyle = '#eab308';
-    ctx.lineWidth = 2;
+    // Polígono. F4 validación humana (2026-09-25): quad inválido (cruzado/
+    // degenerado) → borde ROJO + banner: el "confirm" que no respondía era un
+    // 'invalid' con toast INVISIBLE bajo este overlay (z-index 50). Aquí el
+    // feedback vive DENTRO del editor y es en vivo mientras se arrastra.
+    const valid = this.quadIsValid();
+    ctx.strokeStyle = valid ? '#eab308' : '#ef4444';
+    ctx.lineWidth = valid ? 2 : 3;
     ctx.beginPath();
     ctx.moveTo(r.x + this.fractions[0]! * r.w, r.y + this.fractions[1]! * r.h);
     for (let i = 1; i < 4; i++) {
@@ -342,7 +367,12 @@ export class AdjustEditor {
     ctx.stroke();
 
     // Badges por lado (punto medio del lado; color de aviso si pide revisión).
+    // F4 validación humana (2026-09-25): SOLO se dibujan con info REAL del
+    // refine (fellBack !== null). Con null (captura manual sin refine) los 4
+    // badges ámbar parecían "handles de alto/ancho que no funcionan" — sin
+    // info de refine no hay nada que señalar y se omiten.
     const badges = sideReviewBadges(this.fellBack);
+    const showBadges = this.fellBack !== null;
     const mid = (i: number) => {
       const x1 = r.x + this.fractions[2 * i]! * r.w;
       const y1 = r.y + this.fractions[2 * i + 1]! * r.h;
@@ -350,7 +380,7 @@ export class AdjustEditor {
       const y2 = r.y + this.fractions[2 * ((i + 1) % 4) + 1]! * r.h;
       return { x: (x1 + x2) / 2, y: (y1 + y2) / 2 };
     };
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; showBadges && i < 4; i++) {
       const m = mid(i);
       const needReview = badges[i] === true;
       ctx.beginPath();
@@ -381,10 +411,46 @@ export class AdjustEditor {
       ctx.stroke();
     }
 
+    // Banner de quad inválido (encima de todo, dentro del canvas — el toast
+    // del harness queda bajo este overlay: ver nota en el polígono).
+    if (!valid) {
+      const msg = 'Quad inválido: esquinas cruzadas o lados degenerados — corrígelo antes de confirmar';
+      ctx.font = '700 13px system-ui, sans-serif';
+      const tw = ctx.measureText(msg).width;
+      const bw = Math.min(w - 16, tw + 24);
+      const bh = 36;
+      const bx = (w - bw) / 2;
+      const by = 10;
+      const rr = 8;
+      ctx.fillStyle = 'rgba(239,68,68,0.94)';
+      ctx.beginPath();
+      ctx.moveTo(bx + rr, by);
+      ctx.arcTo(bx + bw, by, bx + bw, by + bh, rr);
+      ctx.arcTo(bx + bw, by + bh, bx, by + bh, rr);
+      ctx.arcTo(bx, by + bh, bx, by, rr);
+      ctx.arcTo(bx, by, bx + bw, by, rr);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(msg, w / 2, by + bh / 2, bw - 16);
+    }
+  }
+
+  /** ¿El quad actual es confirmable? (validación EN VIVO — F4 validación
+   *  humana 2026-09-25: el 'invalid' silencioso del orchestrator + toast bajo
+   *  el overlay = "botón confirmar muerto". Con este gate el editor lo pinta
+   *  antes de intentar confirmar). */
+  private quadIsValid(): boolean {
+    if (this.photo === null) return false;
+    const q = fractionsToQuadPx(this.fractions, this.photo.frameW, this.photo.frameH);
+    return validateQuad(q, this.photo.frameW, this.photo.frameH);
   }
 
   /** Loupe 3× (recorta preview alrededor del handle arrastrado) + crosshair.
-   *  Solo vive durante el arrastre. */
+   *  Solo vive durante el arrastre. Dibujado en el lado opuesto del dedo
+   *  (loupeCenter) — F4 validación humana 2026-09-25. */
   private renderLoupe(): void {
     const ctx = this.ctx;
     if (ctx === null || this.photo === null || this.preview === null || this.dragIndex === null) {
@@ -393,7 +459,8 @@ export class AdjustEditor {
     const i = this.dragIndex;
     const r = this.display();
     const hp = fractionsToDisplay(this.fractions[2 * i]!, this.fractions[2 * i + 1]!, r);
-    const lr = loupeRect(hp.x, hp.y);
+    const lc = loupeCenter(hp.x, hp.y, this.canvas.width, this.canvas.height);
+    const lr = { x: lc.x - EDITOR_LOUPE_RADIUS, y: lc.y - EDITOR_LOUPE_RADIUS, w: 2 * EDITOR_LOUPE_RADIUS, h: 2 * EDITOR_LOUPE_RADIUS };
     // Región fuente: radio del loupe dividido por el zoom, en px del preview.
     const srcPxPerCss = this.preview.width / r.w;
     const srcDiam = (lr.w / EDITOR_LOUPE_SCALE) * srcPxPerCss;
@@ -401,7 +468,7 @@ export class AdjustEditor {
     const sy = clampFraction(this.fractions[2 * i + 1]!) * this.preview.height;
     ctx.save();
     ctx.beginPath();
-    ctx.arc(hp.x, hp.y, EDITOR_LOUPE_RADIUS, 0, Math.PI * 2);
+    ctx.arc(lc.x, lc.y, EDITOR_LOUPE_RADIUS, 0, Math.PI * 2);
     ctx.clip();
     ctx.fillStyle = '#000';
     ctx.fillRect(lr.x, lr.y, lr.w, lr.h);
@@ -418,14 +485,15 @@ export class AdjustEditor {
       lr.w,
       lr.h,
     );
-    // Crosshair centrado en el handle.
+    // Crosshair centrado en el loupe: marca el punto de corte real (el
+    // handle), ahora visible en el lado opuesto del dedo.
     ctx.strokeStyle = 'rgba(234,179,8,0.95)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(hp.x, lr.y);
-    ctx.lineTo(hp.x, lr.y + lr.h);
-    ctx.moveTo(lr.x, hp.y);
-    ctx.lineTo(lr.x + lr.w, hp.y);
+    ctx.moveTo(lc.x, lr.y);
+    ctx.lineTo(lc.x, lr.y + lr.h);
+    ctx.moveTo(lr.x, lc.y);
+    ctx.lineTo(lr.x + lr.w, lc.y);
     ctx.stroke();
     ctx.restore();
   }

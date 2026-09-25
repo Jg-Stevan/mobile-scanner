@@ -48,6 +48,10 @@
   #editorCanvas { width: min(96vw, 640px); height: min(62vh, 520px); background: #000;
     touch-action: none; border-radius: 8px; }
   #editorBtns { margin-top: 10px; }
+  /* F4 validación humana (2026-09-25): error DENTRO del overlay — el #toast
+     de la página queda bajo #editorRoot (z-index 50) y era invisible. */
+  #editorErr { margin-top: 10px; max-width: 640px; color: #f87171;
+    font-weight: 700; min-height: 20px; text-align: center; }
   .pill { background: #f59e0b; color: #111; border-radius: 999px; padding: 2px 10px;
     font-weight: 700; }
   .pill.ok { background: #22c55e; }
@@ -115,14 +119,16 @@
      su backing store con clientWidth/Height en cada open(). -->
 <div id="editorRoot" hidden>
   <canvas id="editorCanvas" width="320" height="240"></canvas>
+  <div id="editorErr"></div>
   <div class="row" id="editorBtns">
     <button id="confirmBtn">✓ Confirmar</button>
     <button id="revertBtn">↺ Volver a auto</button>
     <button id="cancelBtn">✕ Cancelar</button>
   </div>
   <div style="max-width:640px;color:#bbb;font-size:12px;text-align:center">
-    Arrastra las 4 esquinas (≥44px táctiles). El círculo 3× amplía mientras
-    arrastras. Badge ámbar en el lado que el refiner marcó para revisión.
+    Arrastra las 4 esquinas (≥44px táctiles). La lupa 3× aparece en el lado
+    opuesto del dedo mientras arrastras. Badge ámbar = lado que el refiner
+    marcó para revisión (solo si hubo refinado automático).
   </div>
 </div>
 
@@ -294,17 +300,46 @@ async function main() {
     canvas: $('editorCanvas'),
     callbacks: {
       onConfirm: (quad) => {
+        // F4 validación humana (2026-09-25): .catch + #editorErr — el 'invalid'
+        // y 'busy' antes eran un toast INVISIBLE bajo el overlay ("confirmar
+        // no funciona"). El estado invalid también lo pinta el editor en vivo
+        // (borde rojo + banner en el canvas).
         void orch.submitEditedQuad(quad).then((r) => {
-          if (r === 'invalid') { toast('Quad inválido (área/convexidad) — corrige las esquinas'); return; }
-          if (r === 'busy') { toast('FSM ocupado — reintenta'); return; }
+          if (r === 'invalid') {
+            const msg = 'Quad inválido (cruce/área/lados) — corrige las esquinas rojas';
+            toast(msg);
+            $('editorErr').textContent = msg;
+            return;
+          }
+          if (r === 'busy') {
+            const msg = 'FSM ocupado — reintenta';
+            toast(msg);
+            $('editorErr').textContent = msg;
+            return;
+          }
+          $('editorErr').textContent = '';
           editor.close();
+        }).catch((e) => {
+          const msg = `Confirm: ${e.message}`;
+          showErr(msg);
+          $('editorErr').textContent = msg;
         });
       },
       onRevert: () => {
         // Re-warp con el auto + reset de los handles a las esquinas automáticas.
         void orch.revertEditedQuad().then((ok) => {
-          if (!ok) { toast('Sin quad automático que revertir'); return; }
+          if (!ok) {
+            const msg = 'Sin quad automático que revertir (captura manual): ajusta las esquinas y confirma';
+            toast(msg);
+            $('editorErr').textContent = msg;
+            return;
+          }
+          $('editorErr').textContent = '';
           void editor.open(last, lastWarpMeta ? lastWarpMeta.fellBack : null);
+        }).catch((e) => {
+          const msg = `Revert: ${e.message}`;
+          showErr(msg);
+          $('editorErr').textContent = msg;
         });
       },
     },
@@ -452,6 +487,7 @@ async function main() {
   $('editBtn').onclick = () => {
     if (!last) return;
     if (orch.openEditor()) {
+      $('editorErr').textContent = ''; // limpiar error del overlay anterior
       void editor.open(last, lastWarpMeta ? lastWarpMeta.fellBack : null);
     }
   };

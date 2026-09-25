@@ -135,6 +135,21 @@
   warps 0 errores) cerradas.
 
 ## Tareas en Progreso
+- **F4-validación ronda 1 — fixes del editor (harness+UI · 2026-09-25):** el
+  humano verificó el arranque ("volvió a la normalidad el disparo y captura
+  automática") y reportó 3 hallazgos del editor: (1) lupa bajo el dedo → MOVIDA
+  al lado vertical opuesto (`loupeCenter()`, crosshair = punto de corte real);
+  (2) "circulitos de alto/ancho no funcionan" → eran BADGES de refine pintados
+  SIEMPRE con fellBack=null → ahora solo se dibujan con info real; (3) GRAVO:
+  confirmar muerto en captura manual → cadena reproducida: quad cruzado al
+  arrastrar → 'invalid' → toast INVISIBLE bajo #editorRoot (z-index 50 cubre el
+  viewport) → cero feedback. Fix: validación EN VIVO en el editor (polígono
+  rojo + banner en canvas via quadIsValid/validateQuad) + #editorErr dentro del
+  overlay + .catch en confirm/revert. Rebuild f4/ (bundle Cd1nBD7V). E2E del
+  artefacto: invalid visible+bloquea, válido confirma, 0 pageerrors; 314/314
+  tests, tsc limpio. Evidencia: PLAN_EVIDENCE/F4-validacion/ (ronda 1).
+  ⏳ Humano aplica parche, pushea y repite editor + diana + colector (ronda 2;
+  los adjuntos de evidencia NO llegan al sandbox → reportar valores como TEXTO).
 - **F4-fix-typo-editBtn cerrada (harness · 2026-09-25):** tras aplicar y pushear
   el fix de arranque (`6403db4`), el humano reportó F4 SIGUE muerto en dispositivo
   (videos f3/f4 enviados; no llegaron al sandbox). Causa raíz REAL encontrada y
