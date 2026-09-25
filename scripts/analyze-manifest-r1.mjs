@@ -43,12 +43,15 @@ lines.forEach((line, i) => {
     }
   }
 
-  // fellBack: null | 4 booleanos — INVARIANTE: si autoQuad es null no hubo
-  // refine → fellBack debe ser null ("null si no hubo refine", dataCollect.ts)
+  // fellBack: null | 4 booleanos — INVARIANTE (refinada ronda 2): fellBack
+  // NO-null exige que la foto haya sido warpeada: autoQuad non-null (warp del
+  // auto) O adjustedQuad non-null (re-warp del ajuste manual — submitEditedQuad
+  // pasa por deps.requestWarp y refresca la meta). Solo es "stale" si NINGUNO
+  // de los dos existe (captura sin detección y sin editar).
   const fb4 = Array.isArray(r.fellBack) && r.fellBack.length === 4 && r.fellBack.every((b) => typeof b === 'boolean');
   if (!fb4 && r.fellBack !== null) errors.push(`${label}: fellBack debe ser null | 4 booleanos`);
-  if (r.autoQuad === null && r.fellBack !== null) {
-    errors.push(`${label}: INVARIANTE ROTO — autoQuad null pero fellBack NO null (meta stale de captura previa)`);
+  if (r.autoQuad === null && r.adjustedQuad == null && r.fellBack !== null) {
+    errors.push(`${label}: INVARIANTE ROTO — sin autoQuad NI adjustedQuad pero fellBack NO null (meta stale de captura previa)`);
   }
 
   // adjustedQuad (opcional): 8 floats en [0,1]
