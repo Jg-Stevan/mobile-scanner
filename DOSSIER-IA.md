@@ -152,6 +152,15 @@ mobile-scanner/
 
 ## 10. Changelog del dossier
 
+- **2026-09-25 (2):** fix harness F4 (F4-fix-typo-editBtn): causa raíz REAL del
+  F4 muerto en dispositivo era un typo `$('#editBtn')` (getElementById con '#'
+  → null → TypeError → main() moría antes del frameLoop y del handler del
+  shutter). El diagnóstico previo (CDN 403) era válido como hallazgo de
+  infraestructura pero NO era el causante: F5 usa el mismo worker/CDN y
+  funciona en el dispositivo del humano. Fix de 1 carácter + rebuild f4/
+  (bundle DW_MiY1r). E2E del artefacto con opencv stub: boot completo, shutter
+  activo, 0 pageerrors. Lección registrada: la E2E anterior nunca ejercitó un
+  boot COMPLETO hasta el final de main(). Estado: sin cambios de fases.
 - **2026-09-25:** fix harness F4 (F4-fix-arranque): boot recuperable con botón
   "Iniciar cámara" + error visible + reintento (patrón F5). Hallazgo de
   infraestructura: docs.opencv.org responde 403 challenge Cloudflare a

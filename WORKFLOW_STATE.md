@@ -135,6 +135,22 @@
   warps 0 errores) cerradas.
 
 ## Tareas en Progreso
+- **F4-fix-typo-editBtn cerrada (harness · 2026-09-25):** tras aplicar y pushear
+  el fix de arranque (`6403db4`), el humano reportó F4 SIGUE muerto en dispositivo
+  (videos f3/f4 enviados; no llegaron al sandbox). Causa raíz REAL encontrada y
+  corregida: typo en línea 452 del harness — `$('#editBtn')` con `$ =
+  getElementById` SIN '#' → null → TypeError → `main()` moría ANTES de
+  `startFrameLoop` y del handler del shutter (preview vivo + botones muertos +
+  auto-shutter inexistente). Coincide 1:1 con el síntoma humano. Lección: la E2E
+  anterior solo ejercitó el camino de FALLO (CDN 403 en sandbox) — nunca un boot
+  completo; el typo era invisible en sandbox. Nota: F5 usa el MISMO worker/CDN y
+  funciona en el dispositivo → el opencv CDN carga bien en la red del humano (el
+  403 Cloudflare es anti-bot de datacenter; hallazgo de infra para F6/PWA sigue
+  válido). Fix: 1 carácter + rebuild `f4/` (bundle `DW_MiY1r`, generación previa
+  conservada). E2E del ARTEFACTO con opencv stub: boot completo, shutter activo,
+  `__orch`/`__editor` definidos, 0 pageerrors; 314/314 tests, tsc limpio.
+  Evidencia: `PLAN_EVIDENCE/F4-fix-typo-editBtn/`. ⏳ Humano aplica parche,
+  pushea y reintenta F4 (URL sin parámetros).
 - **F4-fix-arranque cerrada (harness · 2026-09-25):** el humano reportó F4 muerto
   (shutter manual y auto sin respuesta, incluso con `?autostart=1`). Diagnóstico
   Playwright: boot all-or-nothing — `main()` sin catch utilizable; un fallo del
@@ -217,7 +233,9 @@ de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
 - **F4 validación humana en dispositivo físico** — ⏳ edición táctil de esquinas
   (loupe) + colector de dataset opt-in + diana de calibración (±X mm al 95%).
   (2026-09-25: primer intento bloqueado por fallo de arranque del harness —
-  corregido en F4-fix-arranque; reintentar con URL sin parámetros.)
+  corregido en F4-fix-arranque; el fallo persistente posterior era un typo
+  `$('#editBtn')` → corregido en F4-fix-typo-editBtn; reintentar con URL sin
+  parámetros tras aplicar y pushear el parche.)
 - **F5 revisión visual humana** — ⏳ banding CLAHE (D-F5-b) + resultados del
   harness CER Tesseract por modo/categoría.
 

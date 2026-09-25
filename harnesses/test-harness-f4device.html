@@ -449,7 +449,7 @@ async function main() {
       },
     },
   });
-  $('#editBtn').onclick = () => {
+  $('editBtn').onclick = () => {
     if (!last) return;
     if (orch.openEditor()) {
       void editor.open(last, lastWarpMeta ? lastWarpMeta.fellBack : null);
