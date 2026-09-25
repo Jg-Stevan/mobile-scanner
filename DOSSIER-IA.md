@@ -167,6 +167,21 @@ mobile-scanner/
   limpio) + E2E 4/4 (permiso denegado, rotación, background, track ended) +
   regresión completa verde (7 suites E2E). Quirk headless documentado: denegación
   → NotSupportedError; el disparo real va en el checklist W4.
+- **2026-09-26 (7):** F6.5 fixes de F5 por validación humana (editor f5 +
+  export PDF adaptativo + thumbs con modo). Hallazgos con evidencia real del
+  humano (actas E-14 arrugadas, lote 1/2 en `PLAN_EVIDENCE/F5/validacion/`):
+  (1) f5 no tenía editor — una captura mala (warp de textura = página-ruido de
+  1.9MB en el PDF) quedaba sin remedio → editor de F4 portado (mismo contrato
+  FSM `openEditor`/`submitEditedQuad`/`cancel`). (2) PDF 5.28MB/3págs > DoD
+  3MB → export ADAPTATIVO (`pdfBudgetBytes` + `EXPORT_STEPS` 2600/q0.82 →
+  2200/q0.78; worker acepta `quality`/`maxLongSide` ADITIVO); E2E real:
+  4.17MB → 2.04MB. (3) las thumbs no reflejaban el modo → re-render con
+  cache + fallback. Hallazgo CER lote 2 registrado: **natural gana**
+  (0.175/0.394) y **gray/CLAHE pierde** (0.648) en papel arrugado — la
+  preocupación §F5 confirmada con números; bw sobrevive y es ~10× más
+  barato. +7 unit (363/363, tsc limpio) + E2E 6/6 con opencv REAL (stub de
+  cv rompe el warp: "e.Mat is not a constructor"). Regresión: F6.1 2/2,
+  F6.2 3/3.
 - **2026-09-25 (6):** F6.3 telemetría opt-in estilo Sentry. Núcleo puro
   (`parseDsn`/`redactMessage`/`buildEnvelope`/`createTelemetry`) + wiring DOM
   ligera (botón OFF/ON en el panel de f4/f5, hooks ADITIVOS de

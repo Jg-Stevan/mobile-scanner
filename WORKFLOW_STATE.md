@@ -3,6 +3,33 @@
 Última actualización: 2026-09-26
 
 ## Tareas Completadas
+- **F6.5 fixes de F5 por validación humana (sandbox · 2026-09-26):** tres
+  hallazgos del humano con evidencia real (2 PDFs actas E-14 arrugadas + CER
+  lote 1/2 + revision forense del revisor — ver `PLAN_EVIDENCE/F5/validacion/`):
+  (1) **Sin editor en f5** — la página 3 del PDF lote 1 era ruido puro (warp
+  atrapó textura) y no había forma de corregirla → editor de esquinas de F4
+  portado a f5 (mismo contrato: `openEditor()` → `submitEditedQuad`/
+  `revertEditedQuad`/`cancelEditing`; `lastWarpMeta` subido a módulo; botón
+  habilitado SOLO en estado 'captured'; `onEdited` repone `lastSourceBlob`).
+  (2) **PDF sobre presupuesto** — lote 1: 5.28MB/3págs vs DoD <3MB (q0.90 sin
+  re-escala; la página-ruido costaba 1.9MB: el ruido no comprime) → export
+  ADAPTATIVO: `pdfBudgetBytes` (piso 3MB, ~1MB/pág, techo 8MB) + `EXPORT_STEPS`
+  (0=identidad q0.90 → 2600px q0.82 → 2200px q0.78); el worker acepta ahora
+  `quality`/`maxLongSide` en `EnhanceRequest` (ADITIVO — re-escala ANTES del
+  enhance vía drawImage); E2E real: 4.17MB → paso 2600 → **2.04MB**.
+  (3) **Las miniaturas no reflejaban el modo** ("los modos solo se ven al
+  exportar" era una trampa de UX) → thumbs renderizadas con el modo vigente
+  (cache id|modo|tam, fallback al original si el worker está ocupado; el tag
+  nombra ahora lo que se ve). Hallazgo CER lote 2 (registro, no código):
+  **natural gana** (0.175/0.394) y **gray/CLAHE es el peor** (0.648) en papel
+  arrugado — la preocupación §F5 del plan confirmada con números; bw
+  sobrevive (0.30) y es ~10× más barato (112KB/pág). Tests: +7 unit
+  (363/363, tsc limpio). E2E nueva `test-f65-f5-fixes.mjs` 6/6 sobre el
+  artefacto con opencv REAL (lección: el stub de cv rompe el warp con
+  "e.Mat is not a constructor" — vendor local funciona). Regresión verde:
+  F6.1 2/2, F6.2 3/3. Evidencia: `PLAN_EVIDENCE/F6/f65-fixes/`.
+  ⏳ Humano: `git am f6.5-f5-fixes.patch` + push + re-test: editar el quad de
+  una captura mala en f5, exportar <3MB, ver las thumbs cambiar con el modo.
 - **F6.4 robustez de errores + matriz de dispositivos (sandbox · 2026-09-26):**
   PLAN §F6 filas "Errores" + "Matriz de dispositivos".
   (a) `src/camera/cameraErrors.ts` PURO: `classifyCameraError` (por `err.name`
@@ -28,8 +55,8 @@
   NOTA entorno: headless mapea denegación a NotSupportedError (quirk) → Caso 1
   inyecta NotAllowedError estándar; el disparo real va en checklist W4.
   Regresión completa verde (7 suites E2E). Evidencia: `PLAN_EVIDENCE/F6/robustez/`.
-  ⏳ Humano: `git am f6.4-robustez.patch` + push + primera ronda del checklist
-  semanal (rotación/background/permisos revocados en 2 dispositivos).
+  ✅ Humano (2026-09-26): `git am` aplicado
+  (d6da7ba) + push; primera ronda del checklist semanal pendiente de log.
 - **Adaptación del entorno** (PLAN_ADAPTACION Fases 0-5): 8 agentes globales, AGENTS.md,
   WORKFLOW_STATE.md, 3 skills de dominio, comando `/spike` + `/ship`, HTML del spike F0.
   Evidencias en `PLAN_EVIDENCE/adaptacion/`.
@@ -206,8 +233,8 @@
   DSN por `localStorage` (vacío ⇒ solo conteo local honesto). 11 tests unit +
   E2E 4 casos (OFF=0 POSTs, envelope válido con token redactado, rate limit
   20+6, persistencia). Regresiones verdes (330/330, 6 E2E). Evidencia:
-  `PLAN_EVIDENCE/F6/telemetry/`. ⏳ Humano: `git am` (después de f6.2) + push;
-  DSN real cuando exista cuenta Sentry.
+  `PLAN_EVIDENCE/F6/telemetry/`. ✅ Humano (2026-09-26): `git am` aplicado
+  (f6d6f4e) + push. DSN real pendiente: cuando exista cuenta Sentry.
 - **F6.2 PWA offline (sandbox · 2026-09-25):** service worker hecho a mano (~120
   líneas, SIN Workbox-CDN: sería otro SPOF tras el hallazgo F6.1 — desviación
   documentada en el reporte) + `manifest.webmanifest` (start_url → harness F5) +
@@ -220,14 +247,18 @@
   `f5/` lleva la cadena F6.1 al worker desplegado de F5 (que seguía en `DU2EpkNr`
   pre-F6.1 → f5 dependía del CDN en dispositivo). E2E nueva 3/3: instalación +
   **boot COMPLETO OFFLINE desde caché** (worker + opencv 8.6MB) + guarda. Regresiones
-  verdes (319/319, tsc, 4 E2E). Evidencia: `PLAN_EVIDENCE/F6/pwa/`. ⏳ Humano:
-  `git am` + push + instalar en 2 dispositivos + 2º arranque en modo avión.
+  verdes (319/319, tsc, 4 E2E). Evidencia: `PLAN_EVIDENCE/F6/pwa/`. ✅ Humano
+  (2026-09-26): `git am` (596299a) + push + **PWA instalada y 2º arranque en
+  modo avión validado en dispositivo** ("funciona bastante bien" — humano).
+  Falta la 2ª device por confirmar (checklist semanal).
 - **F6.1 opencv self-host (sandbox · 2026-09-25):** `vendor/opencv-4.5.5.js`
   (build techstark, línea Module revertida a global) + cadena vendor→CDN con
   observabilidad (`opencvCandidateUrls` pura + 5 tests + panel `#mOpencv` en f4);
   E2E 2/2 (boot REAL local + SPOF muerto recuperable). Commit 8444441 aplicado y
-  desplegado por el humano. ⏳ Humano: confirmar en dispositivo
-  `#mOpencv=vendor/opencv-4.5.5.js`.
+  desplegado por el humano. ✅ Humano (2026-09-26, indirecto): el boot OFFLINE
+  en modo avión (F6.2) solo es posible con opencv servido desde
+  `vendor/`→precache — cadena local validada en dispositivo.
+  Pendiente opcional: verlo explícito en `#mOpencv` de f4.
 - **F4-fix-typo-editBtn cerrada (harness · 2026-09-25):** tras aplicar y pushear
   el fix de arranque (`6403db4`), el humano reportó F4 SIGUE muerto en dispositivo
   (videos f3/f4 enviados; no llegaron al sandbox). Causa raíz REAL encontrada y

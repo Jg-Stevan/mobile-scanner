@@ -12,6 +12,7 @@
 // orden F5 (~200px miniaturas) y el umbral de 44px reutilizado de AdjustEditor.
 
 import type { EnhanceMode } from '../core/types';
+import { JPEG_QUALITY } from '../core/imageModes';
 import { PDF_SIZE_LIMIT_BYTES } from '../export/pageStore';
 import type { PageRecord, PageStore } from '../export/pageStore';
 import { EDITOR_TOUCH_PX, previewDims } from './AdjustEditor';
@@ -73,11 +74,12 @@ export function indexAtPoint(
 export async function preparePages(
   pages: readonly PageRecord[],
   mode: EnhanceMode,
-  prepare: (source: Blob, mode: EnhanceMode) => Promise<Blob>,
+  prepare: (source: Blob, mode: EnhanceMode, step?: ExportStep) => Promise<Blob>,
+  step?: ExportStep,
 ): Promise<PageRecord[]> {
   const out: PageRecord[] = [];
   for (const p of pages) {
-    const blob = await prepare(p.blob, mode);
+    const blob = await prepare(p.blob, mode, step);
     if (blob === null) throw new Error(`enhance falló para la página ${p.order + 1}`);
     out.push({ ...p, blob, mode });
   }
@@ -98,6 +100,41 @@ export function modeLabel(mode: EnhanceMode): string {
   }
 }
 
+// --- F6.5: export adaptativo (hallazgo de la validación humana F5) --------
+// Lote 1 del humano: 3 páginas arrugadas → 5.28MB (> DoD 3MB) con q0.90 y
+// sin re-escala; la página con textura ruidosa costó 1.9MB (el ruido no
+// comprime). Medido con las imágenes reales del humano: cap 2200px + q0.78
+// → 2.1MB total. Estrategia: PRIMER intento SIEMPRE a máxima calidad (el
+// documento limpio típico pasa de una); solo si supera el presupuesto se
+// re-encode en pasos más agresivos. Nunca amplía (maxLongSide 0 = tal cual).
+
+/** Un paso de re-encode del export: lado mayor máximo (0 = sin límite) y
+ *  calidad JPEG (PNG/bw la ignora). */
+export interface ExportStep {
+  maxLongSide: number;
+  quality: number;
+}
+
+/** Pasos del export adaptativo, de MÁS a MENOS calidad. Paso 0 = identidad
+ *  (q0.90, sin re-escala — comportamiento pre-F6.5). Los valores 2/3 salen
+ *  del experimento con las páginas reales de la validación (2600/q0.82 →
+ *  ~3.3MB·3págs; 2200/q0.78 → ~2.1MB·3págs). */
+export const EXPORT_STEPS: readonly ExportStep[] = [
+  { maxLongSide: 0, quality: JPEG_QUALITY },
+  { maxLongSide: 2600, quality: 0.82 },
+  { maxLongSide: 2200, quality: 0.78 },
+];
+
+/** Presupuesto de tamaño del PDF por número de páginas (bytes). Origen: DoD
+ *  F5 "3 páginas → PDF <3MB" generalizado a ~1MB/página con PISO de 3MB
+ *  (documentos de 1-2 páginas no deben degradarse por un presupuesto menor
+ *  al del DoD) y TECHO de 8MB (PDF_SIZE_LIMIT_BYTES — aviso vigente). */
+export function pdfBudgetBytes(count: number): number {
+  if (!(count > 0)) return 0;
+  const mb = Math.min(Math.max(count, 3), PDF_SIZE_LIMIT_BYTES / (1024 * 1024));
+  return Math.round(mb * 1024 * 1024);
+}
+
 // ---------------------------------------------------------------------------
 // Clase (DOM ligera; deps inyectadas; sin document global salvo helpers que
 // llegan por parámetro)
@@ -111,8 +148,10 @@ export interface PageGalleryDeps {
    *  Default: canvas 2d con drawImage + downscale a thumbDims. */
   makeThumb?: (blob: Blob) => Promise<HTMLCanvasElement>;
   /** Transforma el warped almacenado al modo global vigente antes del PDF.
-   *  Default: usa el blob almacenado (para consumidores ya realzados). */
-  prepare?: (source: Blob, mode: EnhanceMode) => Promise<Blob>;
+   *  Default: usa el blob almacenado (para consumidores ya realzados).
+   *  F6.5: `step` opcional (maxLongSide/quality) para el export adaptativo —
+   *  los consumidores que lo ignoran siguen funcionando sin cambios. */
+  prepare?: (source: Blob, mode: EnhanceMode, step?: ExportStep) => Promise<Blob>;
   /** Comparte el PDF (navigator.share; el harness decide share vs download).
    *  Devuelve false si el usuario canceló. Default: download vía <a>. */
   onExport?: (pdf: Blob, a4: boolean) => Promise<void>;
@@ -139,6 +178,11 @@ export class PageGallery {
    *  mientras haya páginas en la cola y no se haya exportado aún. */
   private exportedThisSession = false;
   private boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
+  /** F6.5: cache de miniaturas PROCESADAS con el modo vigente — render() es
+   *  frecuente (add/delete/reorder) y re-enhance por página en cada render
+   *  saturaría el worker (mismo worker que la cámara). Clave id|modo|tam;
+   *  tope simple: >60 entradas → clear (las thumbs son ~200px, baratas). */
+  private thumbCache = new Map<string, HTMLCanvasElement>();
 
   constructor(deps: PageGalleryDeps) {
     this.root = deps.root;
@@ -181,7 +225,14 @@ export class PageGallery {
   /** Reflexión del modo global actual (el harness la mantiene sincronizada;
    *  el worker la aplica en el próximo enhance). */
   setMode(mode: EnhanceMode): void {
+    if (this.mode === mode) return;
     this.mode = mode;
+    // F6.5: las miniaturas muestran el RESULTADO del modo (hallazgo humano:
+    // "los modos solo se ven al exportar" era una trampa de UX). Re-render
+    // con cache — solo re-enhance de las páginas cuyo (id|modo) cambió.
+    void this.render().catch(() => {
+      // sin cámara/store caído el render no debe romper el cambio de modo
+    });
   }
   getMode(): EnhanceMode {
     return this.mode;
@@ -211,7 +262,7 @@ export class PageGallery {
     }
     sel.value = this.mode;
     sel.addEventListener('change', () => {
-      this.mode = sel.value as EnhanceMode;
+      this.setMode(sel.value as EnhanceMode); // F6.5: setMode re-renderiza thumbs
       this.onModeChange?.(this.mode);
     });
     bar.appendChild(sel);
@@ -225,7 +276,7 @@ export class PageGallery {
       const t = doc.createElement('div');
       t.className = 'pg-thumb';
       t.dataset.id = p.id;
-      const canvas = await this.makeThumb(p.blob);
+      const canvas = await this.thumbFor(p);
       canvas.className = 'pg-thumb-img';
       t.appendChild(canvas);
       const del = doc.createElement('button');
@@ -241,7 +292,10 @@ export class PageGallery {
       t.appendChild(del);
       const tag = doc.createElement('div');
       tag.className = 'pg-mode-tag';
-      tag.textContent = modeLabel(p.mode);
+      // F6.5: la miniatura YA muestra el resultado del modo global — el tag
+      // deja de repetir el modo de captura (obsoleto: el modo es global y se
+      // aplica al export) y nombra lo que se ve.
+      tag.textContent = modeLabel(this.mode);
       t.appendChild(tag);
       grid.appendChild(t);
       thumbs.push(t);
@@ -268,19 +322,49 @@ export class PageGallery {
   }
 
   /** Exporta el PDF de la cola (Letter por defecto, A4 con `a4`) y limpia el
-   *  recordatorio. Devuelve bytes para el reporte (el harness mide el meta). */
+   *  recordatorio. Devuelve bytes para el reporte (el harness mide el meta).
+   *  F6.5: export ADAPTATIVO — primer intento a máxima calidad; si supera el
+   *  presupuesto (pdfBudgetBytes) re-encodea en pasos EXPORT_STEPS hasta
+   *  caber (o agotar pasos: gana el más pequeño construido). */
   async exportPdf(a4 = false): Promise<{ size: number; count: number } | null> {
     const pages = await this.store.pages();
     if (pages.length === 0) return null;
-    const prepared = await preparePages(pages, this.mode, this.prepare);
-    const pdf = await this.store.exportPdf({ a4, pages: prepared });
-    if (pdf === null) return null;
+    const budget = pdfBudgetBytes(pages.length);
+    let best: { pdf: Blob; count: number } | null = null;
+    for (const step of EXPORT_STEPS) {
+      const prepared = await preparePages(pages, this.mode, this.prepare, step);
+      const pdf = await this.store.exportPdf({ a4, pages: prepared });
+      if (pdf === null) return null;
+      if (best === null || pdf.size < best.pdf.size) best = { pdf, count: prepared.length };
+      if (pdf.size <= budget) break;
+    }
+    if (best === null) return null;
+    const pdf = best.pdf;
     if (pdf.size > PDF_SIZE_LIMIT_BYTES) {
       this.warn?.(`PDF de ${(pdf.size / 1024 / 1024).toFixed(1)} MB supera el techo de 8 MB — reduce páginas.`);
     }
     await this.onExport(pdf, a4);
     this.exportedThisSession = true;
-    return { size: pdf.size, count: prepared.length };
+    return { size: pdf.size, count: best.count };
+  }
+
+  /** Miniatura de una página PROCESADA con el modo global vigente (F6.5),
+   *  con cache id|modo|tam y fallback al blob original si el enhance falla
+   *  (worker ocupado por la cámara → la galería nunca se rompe). */
+  private async thumbFor(p: PageRecord): Promise<HTMLCanvasElement> {
+    const key = `${p.id}|${this.mode}|${p.blob.size}`;
+    const hit = this.thumbCache.get(key);
+    if (hit) return hit;
+    let canvas: HTMLCanvasElement;
+    try {
+      const processed = await this.prepare(p.blob, this.mode);
+      canvas = processed === null ? await this.makeThumb(p.blob) : await this.makeThumb(processed);
+    } catch {
+      canvas = await this.makeThumb(p.blob);
+    }
+    if (this.thumbCache.size > 60) this.thumbCache.clear();
+    this.thumbCache.set(key, canvas);
+    return canvas;
   }
 
   // --- internals ---

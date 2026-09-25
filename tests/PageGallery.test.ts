@@ -5,8 +5,10 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  EXPORT_STEPS,
   indexAtPoint,
   modeLabel,
+  pdfBudgetBytes,
   preparePages,
   relocate,
   shouldStartDrag,
@@ -108,5 +110,66 @@ describe('modeLabel (nomenclatura §F5)', () => {
     expect(modeLabel('gray')).toBe('Gris');
     expect(modeLabel('bw')).toBe('B/N');
     expect(modeLabel('natural')).toBe('Natural');
+  });
+});
+
+describe('pdfBudgetBytes (F6.5 — DoD "3 páginas <3MB" generalizado)', () => {
+  const MB = 1024 * 1024;
+  it('piso de 3MB para colas cortas (1-3 páginas)', () => {
+    expect(pdfBudgetBytes(1)).toBe(3 * MB);
+    expect(pdfBudgetBytes(2)).toBe(3 * MB);
+    expect(pdfBudgetBytes(3)).toBe(3 * MB); // el DoD literal
+  });
+  it('~1MB por página por encima de 3, con techo de 8MB', () => {
+    expect(pdfBudgetBytes(5)).toBe(5 * MB);
+    expect(pdfBudgetBytes(10)).toBe(8 * MB);
+    expect(pdfBudgetBytes(50)).toBe(8 * MB); // nunca sobre el techo duro
+  });
+  it('entradas inválidas → 0 (sin presupuesto = sin degradación)', () => {
+    expect(pdfBudgetBytes(0)).toBe(0);
+    expect(pdfBudgetBytes(-2)).toBe(0);
+  });
+});
+
+describe('EXPORT_STEPS (F6.5 — de más a menos calidad)', () => {
+  it('paso 0 = identidad pre-F6.5 (sin re-escala, q0.90)', () => {
+    expect(EXPORT_STEPS[0]).toEqual({ maxLongSide: 0, quality: 0.9 });
+  });
+  it('decreciente en maxLongSide y quality (desde el paso 1)', () => {
+    for (let i = 2; i < EXPORT_STEPS.length; i++) {
+      const prev = EXPORT_STEPS[i - 1]!;
+      const cur = EXPORT_STEPS[i]!;
+      expect(cur.maxLongSide).toBeLessThan(prev.maxLongSide);
+      expect(cur.quality).toBeLessThan(prev.quality);
+    }
+    for (let i = 1; i < EXPORT_STEPS.length; i++) {
+      const cur = EXPORT_STEPS[i]!;
+      expect(cur.maxLongSide).toBeGreaterThan(0); // los pasos 1+ SÍ re-escalan
+      expect(cur.quality).toBeGreaterThan(0.5); // nunca basura ilegible
+    }
+  });
+});
+
+describe('preparePages con step (F6.5 — el paso viaja al prepare)', () => {
+  it('pasa el step tal cual a cada página', async () => {
+    const seen: Array<{ maxLongSide: number; quality: number } | undefined> = [];
+    const pages = [
+      { id: 'a', blob: new Blob(['1']), mode: 'color' as const, order: 0, ts: 1 },
+      { id: 'b', blob: new Blob(['2']), mode: 'color' as const, order: 1, ts: 2 },
+    ];
+    const step = { maxLongSide: 2200, quality: 0.78 };
+    await preparePages(pages, 'natural', async (_blob, _mode, s) => {
+      seen.push(s);
+      return new Blob(['x']);
+    }, step);
+    expect(seen).toEqual([step, step]);
+  });
+  it('sin step sigue funcionando (undefined — compatibilidad pre-F6.5)', async () => {
+    const pages = [
+      { id: 'a', blob: new Blob(['1']), mode: 'gray' as const, order: 0, ts: 1 },
+    ];
+    const out = await preparePages(pages, 'bw', async () => new Blob(['x']));
+    expect(out).toHaveLength(1);
+    expect(out[0]!.mode).toBe('bw');
   });
 });

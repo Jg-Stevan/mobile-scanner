@@ -395,36 +395,45 @@ async function handleEnhance(msg: Extract<WorkerIn, { type: 'enhance' }>): Promi
     if (!(bitmap.width > 0) || !(bitmap.height > 0)) {
       throw new Error('enhance: dims de warped inválidas');
     }
-    if (canvas === null || canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
-      canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    // F6.5: re-escala opcional ANTES del enhance (maxLongSide del request).
+    // drawImage con destino menor YA reduce (el navegador interpola); nunca
+    // amplía (scale ≤ 1) y respeta dims inválidas → 1px mínimo.
+    const maxLong = msg.maxLongSide ?? 0;
+    const scale = maxLong > 0 ? Math.min(1, maxLong / Math.max(bitmap.width, bitmap.height)) : 1;
+    const tw = Math.max(1, Math.round(bitmap.width * scale));
+    const th = Math.max(1, Math.round(bitmap.height * scale));
+    if (canvas === null || canvas.width !== tw || canvas.height !== th) {
+      canvas = new OffscreenCanvas(tw, th);
     }
     const ctx = canvas.getContext('2d');
     if (ctx === null) throw new Error('OffscreenCanvas 2d null (enhance)');
-    ctx.drawImage(bitmap, 0, 0);
-    const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
-    const pix = applyMode(cvApi, imageData.data, msg.mode, bitmap.width, bitmap.height);
+    ctx.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height, 0, 0, tw, th);
+    const imageData = ctx.getImageData(0, 0, tw, th);
+    const pix = applyMode(cvApi, imageData.data, msg.mode, tw, th);
     if (pix.data.length === 0) throw new Error('enhance: salida vacía (dims no cuadran)');
     const mime = enhanceMime(msg.mode);
-    if (enhanceCanvas === null || enhanceCanvas.width !== bitmap.width || enhanceCanvas.height !== bitmap.height) {
-      enhanceCanvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    if (enhanceCanvas === null || enhanceCanvas.width !== tw || enhanceCanvas.height !== th) {
+      enhanceCanvas = new OffscreenCanvas(tw, th);
     }
     const octx = enhanceCanvas.getContext('2d');
     if (octx === null) throw new Error('OffscreenCanvas destino 2d null (enhance)');
-    const img = octx.createImageData(bitmap.width, bitmap.height);
+    const img = octx.createImageData(tw, th);
     img.data.set(pix.data);
     octx.putImageData(img, 0, 0);
     // convertToBlob es async: el busy se libera tras el fetch del blob
     // (el yoyo bitmap→canvas→blob es el único encode del pipeline F5).
+    // F6.5: calidad JPEG parametrizable (export adaptativo); ausente → 0.90.
+    const quality = msg.quality ?? JPEG_QUALITY;
     const blob = await enhanceCanvas.convertToBlob({
       type: mime,
-      quality: mime === 'image/jpeg' ? JPEG_QUALITY : undefined,
+      quality: mime === 'image/jpeg' ? quality : undefined,
     });
     post({
       type: 'enhanced',
       blob,
       mime,
-      w: bitmap.width,
-      h: bitmap.height,
+      w: tw,
+      h: th,
       mode: msg.mode,
       elapsedMs: performance.now() - startedAt,
       memory: memorySnapshot(),

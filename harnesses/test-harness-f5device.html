@@ -29,6 +29,14 @@ canvas.overlay{width:100%;height:100%;position:absolute;inset:0;pointer-events:n
 .pg-mode-tag{font-size:11px;text-align:center;color:#9ca3af}
 .pg-hint{color:#fbbf24;margin-top:8px}
 .pg-dragging{opacity:.7;border-color:#22c55e}
+/* F6.5: editor de esquinas (misma UX que F4, traída a la cola multipágina —
+   hallazgo validación humana: una captura mala quedaba en el PDF sin
+   remedio). Overlay fijo; el canvas sincroniza su backing store en open(). */
+#editorRoot{position:fixed;inset:0;background:rgba(0,0,0,0.82);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50}
+#editorRoot[hidden]{display:none}
+#editorCanvas{width:min(96vw,640px);height:min(62vh,520px);background:#000;touch-action:none}
+#editorErr{margin-top:10px;max-width:640px;color:#f87171;min-height:20px;text-align:center}
+#editorHelp{max-width:640px;color:#bbb;font-size:12px;text-align:center}
 pre{background:#000;max-height:180px;padding:8px;overflow:auto;white-space:pre-wrap}
 table{width:100%;border-collapse:collapse;margin:8px 0}
 th,td{border:1px solid #444;padding:7px;text-align:left}
@@ -41,6 +49,7 @@ label{display:inline-flex;align-items:center;gap:5px}
 <div class="row"><canvas id="ring" width="84" height="84"></canvas><div>
 <button id="shutterBtn" disabled>Shutter manual</button>
 <button id="torchBtn" disabled>Torch: ?</button>
+<button id="editBtn" disabled>Editar esquinas</button>
 <button id="addBtn" disabled>Agregar al documento</button>
 </div></div>
 <div id="toast"></div>
@@ -70,6 +79,20 @@ label{display:inline-flex;align-items:center;gap:5px}
 <table><thead><tr><th>Variante</th><th>CER vs OCR original</th><th>Caracteres ref/hip</th><th>Texto reconocido</th></tr></thead><tbody id="cerRows"></tbody></table>
 <pre id="out">…</pre>
 
+<!-- F6.5: editor de esquinas (mismo contrato que F4). Opera sobre la ÚLTIMA
+     captura: confirmar re-warpéa y repone lastSourceBlob (onEdited) para que
+     "Agregar al documento" lleve la versión corregida. -->
+<div id="editorRoot" hidden>
+  <canvas id="editorCanvas" width="320" height="240"></canvas>
+  <div id="editorErr"></div>
+  <div class="row" id="editorBtns">
+    <button id="editorConfirmBtn">Confirmar</button>
+    <button id="editorRevertBtn">Volver a auto</button>
+    <button id="editorCancelBtn">Cancelar</button>
+  </div>
+  <div id="editorHelp">Arrastra las 4 esquinas (mínimo 44px táctiles). La lupa 3× aparece en el lado opuesto del dedo. Badge ámbar = lado que el refiner marcó para revisión.</div>
+</div>
+
 <script type="module">
 import detectionWorkerUrl from '../src/workers/detection.worker.ts?worker&url';
 import { startFrameLoop } from '../src/camera/frameLoop.ts';
@@ -80,6 +103,7 @@ import { ScannerView } from '../src/ui/ScannerView.ts';
 import { ScoreView } from '../src/ui/ScoreView.ts';
 import { ScanOrchestrator } from '../src/scan/ScanOrchestrator.ts';
 import { PageGallery } from '../src/ui/PageGallery.ts';
+import { AdjustEditor } from '../src/ui/AdjustEditor.ts';
 import { PageStore, openPageDB, persistPageStorage } from '../src/export/pageStore.ts';
 import { wireTelemetry } from '../src/telemetry/harnessTelemetry.ts';
 
@@ -150,6 +174,7 @@ let camLost=false;
 let profile=null;
 let lastPhoto=null;
 let lastSourceBlob=null;
+let lastWarpMeta=null; // F6.5: subido a módulo — el editor lo lee para el badge de lados con fallback
 let photoWorker=null;
 let pageStore=null;
 let gallery=null;
@@ -215,9 +240,13 @@ function postPhoto(msg,transfer){
   });
 }
 
-async function enhanceBlob(blob,mode){
+async function enhanceBlob(blob,mode,step){
   const bitmap=await createImageBitmap(blob);
-  const msg=await postPhoto({type:'enhance',bitmap,mode,ts:performance.now()},[bitmap]);
+  // F6.5: step opcional {maxLongSide,quality} del export adaptativo (el
+  // worker re-escala ANTES del enhance y encodea con la calidad pedida).
+  const req={type:'enhance',bitmap,mode,ts:performance.now()};
+  if(step){if(step.maxLongSide)req.maxLongSide=step.maxLongSide;if(step.quality)req.quality=step.quality}
+  const msg=await postPhoto(req,[bitmap]);
   if(msg?.type==='enhanced'){lastEnhanceMs=msg.elapsedMs;return msg.blob}
   return null;
 }
@@ -259,7 +288,8 @@ function makeFakeCamera(){
 }
 
 function createOrchestrator(view,scoreView){
-  let lastWarpMeta=null;
+  // lastWarpMeta vive a NIVEL DE MÓDULO (F6.5): el editor de esquinas lo lee
+  // para el badge de lados con fallback (fbOf), igual que f4.
   return new ScanOrchestrator({
     video:$('v'),
     deps:{
@@ -294,7 +324,12 @@ function createOrchestrator(view,scoreView){
       },
     },
     events:{
-      onState:state=>{$('mState').textContent=state},
+      onState:state=>{
+        $('mState').textContent=state;
+        // F6.5: el editor opera sobre la captura ACEPTADA (state 'captured')
+        // — mismo contrato que f4 (editBtn.disabled = s!=='captured').
+        $('editBtn').disabled=state!=='captured';
+      },
       onScore:score=>scoreView.render(score.total,score.hint),
       onCaptured:photo=>{
         captures++;$('mCap').textContent=String(captures);
@@ -312,6 +347,7 @@ function createOrchestrator(view,scoreView){
       onEdited:photo=>{
         if(lastPhoto&&lastPhoto!==photo){closeBitmap(lastPhoto.warped);closeBitmap(lastPhoto.bitmap)}
         lastPhoto=photo;const visible=photo.warped??photo.bitmap;drawFit(visible,'WARPED EDITADO');
+        $('thumbLabel').textContent='WARPED EDITADO'; // F6.5: faltaba (quedaba CRUDO)
         bitmapToBlob(visible).then(blob=>{lastSourceBlob=blob;$('addBtn').disabled=false});
       },
       onRetry:text=>toast(text),
@@ -341,7 +377,8 @@ async function openCamera(){
     pageStore=new PageStore(db,{});
     gallery=new PageGallery({
       root:$('gallery'),store:pageStore,
-      prepare:(source,mode)=>enhanceBlob(source,mode),
+      // F6.5: el paso adaptativo viaja al worker (re-escala + calidad).
+      prepare:(source,mode,step)=>enhanceBlob(source,mode,step),
       onModeChange:mode=>{$('mMode').textContent=mode;toast(`Modo export: ${mode}`)},
       onExport:async(pdf,isA4)=>{
         const file=new File([pdf],`scanner-${Date.now()}.pdf`,{type:'application/pdf'});
@@ -353,6 +390,7 @@ async function openCamera(){
       },
       warn:showErr,
     });
+    window.__f5gallery=gallery; // hook E2E (la galería ya existe aquí)
     gallery.setMode('color');
     await gallery.render();
     const view=new ScannerView($('v'),$('ov'));
@@ -451,6 +489,48 @@ $('shutterBtn').onclick=()=>started&&void window.__f5orch?.captureManual();
 let torchOn=false;
 $('torchBtn').onclick=async()=>{if(!ctl)return;const result=await ctl.setTorch(!torchOn);if(result!=='unsupported')torchOn=!torchOn;$('torchBtn').textContent=result==='unsupported'?'Torch: n/a':`Torch: ${torchOn?'ON':'off'}`};
 $('addBtn').onclick=async()=>{if(!lastSourceBlob||!pageStore)return;try{await persistPageStorage();await pageStore.addPage(lastSourceBlob,gallery.getMode());await gallery.render();toast('Página agregada')}catch(e){showErr(`Página: ${e.message}`)}};
+
+// ---------------------------------------------------------------------------
+// F6.5: editor de esquinas sobre la ÚLTIMA captura (hallazgo validación
+// humana: una captura mala —p. ej. warp que atrapó textura— quedaba en el
+// PDF sin remedio). MISMO contrato que f4: submitEditedQuad/revert/cancel;
+// onEdited (ya cableado arriba) repone lastSourceBlob para "Agregar".
+// ---------------------------------------------------------------------------
+const fbOf=photo=>(photo&&photo.warped&&lastWarpMeta)?lastWarpMeta.fellBack:null;
+const editor=new AdjustEditor({
+  root:$('editorRoot'),
+  canvas:$('editorCanvas'),
+  callbacks:{
+    onConfirm:quad=>{
+      void window.__f5orch?.submitEditedQuad(quad).then(r=>{
+        if(r==='invalid'){const msg='Quad inválido (cruce/área/lados) — corrige las esquinas rojas';toast(msg);$('editorErr').textContent=msg;return}
+        if(r==='busy'){const msg='FSM ocupado — reintenta';toast(msg);$('editorErr').textContent=msg;return}
+        $('editorErr').textContent='';
+        editor.close();
+      }).catch(e=>{const msg=`Confirm: ${e.message}`;showErr(msg);$('editorErr').textContent=msg});
+    },
+    onRevert:()=>{
+      void window.__f5orch?.revertEditedQuad().then(ok=>{
+        if(!ok){const msg='Sin quad automático que revertir (captura manual): ajusta las esquinas y confirma';toast(msg);$('editorErr').textContent=msg;return}
+        $('editorErr').textContent='';
+        void editor.open(lastPhoto,fbOf(lastPhoto));
+      }).catch(e=>{const msg=`Revert: ${e.message}`;showErr(msg);$('editorErr').textContent=msg});
+    },
+  },
+});
+$('editBtn').onclick=()=>{
+  if(!lastPhoto){toast('Captura una página primero');return}
+  // Misma transición FSM que f4: 'captured' → 'editing' (submitEditedQuad
+  // exige 'editing'; sin openEditor responde 'busy').
+  if(window.__f5orch?.openEditor()){$('editorErr').textContent='';void editor.open(lastPhoto,fbOf(lastPhoto))}
+  else toast('Editor no disponible ahora (captura primero)');
+};
+$('editorConfirmBtn').onclick=()=>editor.onConfirm();
+$('editorRevertBtn').onclick=()=>editor.onRevert();
+$('editorCancelBtn').onclick=()=>{window.__f5orch?.cancelEditing();editor.close()};
+// Hooks de observabilidad/E2E (patrón f4: __editor/__orch). La galería se
+// asigna dentro de openCamera (aún no existe en la carga del módulo).
+window.__f5editor=editor;
 $('refreshBtn').onclick=()=>gallery&&void gallery.render();
 $('pdfSizeBtn').onclick=()=>{a4=!a4;$('pdfSizeBtn').textContent=`Formato PDF: ${a4?'A4':'Letter'}`};
 $('pdfBtn').onclick=()=>{if(!gallery)return;$('pdfBtn').disabled=true;toast('Procesando modo y generando PDF…');gallery.exportPdf(a4).then(result=>{if(result)toast(`PDF: ${result.count} páginas, ${(result.size/1024/1024).toFixed(2)} MB`)}).catch(e=>showErr(`PDF: ${e.message}`)).finally(()=>{$('pdfBtn').disabled=false})};

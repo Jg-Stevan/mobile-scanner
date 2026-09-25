@@ -150,6 +150,15 @@ export interface EnhanceRequest {
   mode: EnhanceMode;
   /** Eco del ts del request (cálculo de latencia en UI). */
   ts: number;
+  /** F6.5 (hallazgo validación humana: PDF 5.3MB/3págs > DoD 3MB): calidad
+   *  JPEG opcional (0-1) para el encode del resultado. Ausente →
+   *  JPEG_QUALITY (0.90, comportamiento idéntico al pre-F6.5). PNG (bw) la
+   *  ignora. */
+  quality?: number;
+  /** F6.5: lado mayor máximo opcional del RESULTADO — el worker re-escala el
+   *  bitmap ANTES del enhance (drawImage ya escala al pintar el canvas
+   *  destino). 0/ausente = sin re-escala. Nunca amplía (scale ≤ 1). */
+  maxLongSide?: number;
 }
 
 /** Worker → UI: resultado del enhance (§5-F5). `blob` ya ENCODE (mime según
