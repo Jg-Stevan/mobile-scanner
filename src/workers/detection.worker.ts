@@ -13,7 +13,7 @@ import { computeWarpDims } from '../core/warp';
 import type { CvApi } from './pipeline';
 import { applyMode, processFrame, refineQuad, warpPage } from './pipeline';
 import type { WorkerIn, WorkerOut, CvProbe } from './protocol';
-import { OPENCV_CDN_URL } from './protocol';
+import { opencvCandidateUrls } from './protocol';
 import { enhanceMime, JPEG_QUALITY } from '../core/imageModes';
 
 // NOTA (T4): este worker se instancia como CLASSIC worker
@@ -210,6 +210,29 @@ function isFractions8(c: Float32Array | null | undefined): c is Float32Array {
 
 post({ type: 'boot', pct: 5 });
 
+/** F6: carga opencv.js de la cadena de candidatos (vendor self-hosted primero,
+ *  CDN al final). `importScripts` lanza si la red/HTTP falla → se prueba el
+ *  siguiente. Devuelve la URL que SIRVIÓ (observabilidad en dispositivo). */
+function loadOpenCv(): string {
+  // self.location está sin tipar en el lib de worker del proyecto (hallazgo tsc)
+  const wself = self as unknown as { location: { href: string } };
+  const candidates = opencvCandidateUrls(wself.location.href);
+  const tried: string[] = [];
+  for (const url of candidates) {
+    try {
+      tried.push(url);
+      importScripts(url);
+      return url;
+    } catch {
+      // 404 (vendor ausente en este layout) o red/Cloudflare (CDN) → siguiente
+    }
+  }
+  throw new Error(`carga opencv.js falló en ${tried.length} candidatos: ${tried.join(' | ')}`);
+}
+
+/** URL de la que efectivamente cargó opencv.js (F6 — viaja en 'ready'). */
+let opencvLoadedUrl: string;
+
 try {
   const holder = self as { Module?: { onRuntimeInitialized?: () => void } };
   holder.Module = holder.Module ?? {};
@@ -221,10 +244,12 @@ try {
     }
     cvRuntime = cv;
     cvApi = adaptCv(cv as Parameters<typeof adaptCv>[0]);
-    post({ type: 'ready', probe: probeCvSurface(cv) });
+    post({ type: 'ready', probe: probeCvSurface(cv), opencvUrl: opencvLoadedUrl });
   };
-  // importScripts es síncrono y no necesita CORS (script clásico).
-  importScripts(OPENCV_CDN_URL);
+  // importScripts es síncrono y no necesita CORS (script clásico). F6: la
+  // cadena de candidatos prueba vendor self-hosted primero y CDN al final; la
+  // URL que SIRVIÓ viaja en 'ready' (opencvUrl) para verla en dispositivo.
+  opencvLoadedUrl = loadOpenCv();
 } catch (e) {
   post({ type: 'error', message: `carga opencv.js falló: ${e instanceof Error ? e.message : String(e)}` });
 }

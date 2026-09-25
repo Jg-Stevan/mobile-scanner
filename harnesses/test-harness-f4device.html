@@ -77,6 +77,7 @@
 <div id="err"></div>
 <div class="metrics">
   <div>Cámara: <b id="mCam">—</b></div>
+  <div>opencv: <b id="mOpencv">—</b></div>
   <div>Estado: <b id="mState">—</b></div>
   <div>FPS: <b id="mFps">—</b></div>
   <div>Contornos: <b id="mCont">—</b></div>
@@ -166,11 +167,16 @@ async function main() {
   $('mCam').textContent = `${profile.label} (${profile.trackWidth}×${profile.trackHeight})`;
 
   // Worker del STREAM (frameLoop lo posee: sobrescribe su onmessage).
+  // F6: 'ready' trae opencvUrl (de qué URL cargó opencv.js: vendor local o CDN).
   const worker = new Worker(detectionWorkerUrl);
   await new Promise((resolve, reject) => {
     const to = setTimeout(() => reject(new Error('worker timeout')), 90000);
     worker.onmessage = (ev) => {
-      if (ev.data && ev.data.type === 'ready') { clearTimeout(to); resolve(); }
+      if (ev.data && ev.data.type === 'ready') {
+        clearTimeout(to);
+        $('mOpencv').textContent = ev.data.opencvUrl ? String(ev.data.opencvUrl).split('/').slice(-2).join('/') : '(sin info)';
+        resolve();
+      }
       if (ev.data && ev.data.type === 'error') { clearTimeout(to); reject(new Error(ev.data.message)); }
     };
   });

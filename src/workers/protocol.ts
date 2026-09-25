@@ -39,8 +39,37 @@ export function computeProcessDims(
 import type { EnhanceMode } from '../core/types';
 
 /** URL pineada del build oficial de OpenCV.js que carga el worker (T4).
- *  4.5.5: última con ruta estable verificada (4.10.0 devuelve 404 en ese path). */
+ *  4.5.5: última con ruta estable verificada (4.10.0 devuelve 404 en ese path).
+ *  F6: es el ÚLTIMO recurso — primero se intentan las copias self-hosted
+ *  (vendor/), el CDN es fallback. */
 export const OPENCV_CDN_URL = 'https://docs.opencv.org/4.5.5/opencv.js';
+
+/** Nombre de archivo del vendor self-hosted (F6). Cambiar aquí si se actualiza
+ *  la versión — y reemplazar el archivo en vendor/. */
+export const OPENCV_VENDOR_FILENAME = 'opencv-4.5.5.js';
+
+/** Cadena de candidatos de carga de opencv.js para UN worker cuya URL de script
+ *  es `workerScriptUrl` (F6 — migra el punto único de fallo del CDN).
+ *
+ *  Orden (primero el más estable):
+ *  1. `../../vendor/<file>` — layouts desplegados: worker en `fN/assets/detection.worker-*.js`
+ *     (GitHub Pages `/mobile-scanner/` → raíz `vendor/`) y dev Vite (`/src/workers/` →
+ *     `public/` servido en `/vendor`).
+ *  2. `../vendor/<file>` — worker a un nivel de la raíz (`/assets/…` en un build
+ *     plano) con vendor hermanado.
+ *  3. CDN pineado (docs.opencv.org) — último recurso; Cloudflare devuelve 403 a
+ *     datacenters (hallazgo F4-fix-arranque), por eso el local va primero.
+ *
+ *  PURA y Node-testeable: resuelve con `new URL()` sobre la URL del worker. */
+export function opencvCandidateUrls(workerScriptUrl: string): string[] {
+  const out: string[] = [];
+  for (const rel of [`../../vendor/${OPENCV_VENDOR_FILENAME}`, `../vendor/${OPENCV_VENDOR_FILENAME}`]) {
+    const u = new URL(rel, workerScriptUrl);
+    if (!out.includes(u.href)) out.push(u.href);
+  }
+  out.push(OPENCV_CDN_URL);
+  return out;
+}
 
 /** UI → Worker: un frame para procesar. `bitmap` viaja como TRANSFERABLE
  *  (el worker lo cierra tras leerlo; el main thread pierde acceso). */
@@ -162,6 +191,9 @@ export interface ReadyMsg {
    *  cargado. OPCIONAL y ADITIVO: los consumidores que solo miran `type`
    *  siguen funcionando. */
   probe?: CvProbe;
+  /** URL de la que SE CARGÓ opencv.js (F6 — observabilidad: en dispositivo se
+   *  ve si vino del vendor self-hosted o del CDN). OPCIONAL y ADITIVO. */
+  opencvUrl?: string;
 }
 
 /** Resultado del sondeo de superficie de opencv.js (D-F5). Cada campo = ¿existe
