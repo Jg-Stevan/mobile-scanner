@@ -9,6 +9,7 @@ import {
   isConvex,
   orderPoints,
   quadArea,
+  quadBoundingBox,
   refineQuadFromLines,
   sameAspectRatio,
   scaleQuad,
@@ -295,5 +296,49 @@ describe('7. validateQuad — validación estricta §5-F1', () => {
       { x: 100, y: 900 },
     ];
     expect(validateQuad(ok, 1000, 1000)).toBe(true);
+  });
+});
+describe('8. quadBoundingBox — fallback no-bloqueante del editor (2026-09-26)', () => {
+  it('quad normal → bounding box axis-aligned en orden TL,TR,BR,BL', () => {
+    const q: Quadrilateral = [
+      { x: 200, y: 100 },
+      { x: 50, y: 300 },
+      { x: 250, y: 400 },
+      { x: 300, y: 200 },
+    ];
+    expect(quadBoundingBox(q)).toEqual([
+      { x: 50, y: 100 },
+      { x: 300, y: 100 },
+      { x: 300, y: 400 },
+      { x: 50, y: 400 },
+    ]);
+  });
+
+  it('quad cruzado (mariposa) → bounding box que contiene todo, sin cruce', () => {
+    const q: Quadrilateral = [
+      { x: 600, y: 1200 },
+      { x: 2400, y: 3000 },
+      { x: 2400, y: 1200 },
+      { x: 600, y: 3000 },
+    ];
+    const bb = quadBoundingBox(q);
+    expect(validateQuad(bb, 3000, 4000)).toBe(true);
+    expect(bb[0]).toEqual({ x: 600, y: 1200 });
+    expect(bb[2]).toEqual({ x: 2400, y: 3000 });
+  });
+
+  it('degenerado (puntos colineales) → rect de altura 0 (el warp lo rechaza, no lanza)', () => {
+    const q: Quadrilateral = [
+      { x: 0, y: 500 },
+      { x: 1000, y: 500 },
+      { x: 500, y: 500 },
+      { x: 250, y: 500 },
+    ];
+    expect(quadBoundingBox(q)).toEqual([
+      { x: 0, y: 500 },
+      { x: 1000, y: 500 },
+      { x: 1000, y: 500 },
+      { x: 0, y: 500 },
+    ]);
   });
 });

@@ -358,10 +358,14 @@ de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
   edición táctil + colector + diana validados en SM-A566E e iPhone 17 Pro
   (ronda 2, ver F4 CERRADA en Tareas Completadas).
 - **F5 revisión visual humana** — ⏳ banding CLAHE (D-F5-b) + resultados del
-  harness CER Tesseract por modo/categoría.
+  harness CER Tesseract por modo/categoría (evidencia subida 2026-09-25 en
+  `PLAN_EVIDENCE/F5/validacion/` — veredicto del revisor externo pendiente).
+- **D-F5-c validación en dispositivo** — ⏳ (2026-09-26) filtro Texto claro +
+  snap de esquinas + captura trocida guardable + fix detached; propuesta en
+  `PLAN_EVIDENCE/F5/propuesta-D-F5-c-texto-claro.md`.
 
 ## Decisiones de Arquitectura
-- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F6 endurecimiento** — F6.1+6.2+6.3 APLICADOS y desplegados en Pages (push humano 2026-09-26); **F6.4 robustez+matriz implementado en sandbox** (parche f6.4-robustez pendiente de `git am`); pendiente humano: validación en dispositivo (pruebas A/B/PWA + checklist W). F6.5 condicional después.
+- **Fuente:** PLAN_MAESTRO v3.1 congelado · Fase actual: **F6 endurecimiento + D-F5-c** — F6.1..6.4 APLICADOS y desplegados en Pages; **D-F5-c (2026-09-26)**: set de filtros Adobe Scan (Color original/Escala de grises/Color automático/Texto claro — `bw` retirado, legado→`text`), quad no-bloqueante (bounding box), snap a esquinas (3 gestos), fix detached-bitmap f5, botón "Detección automática"; propuesta en `PLAN_EVIDENCE/F5/propuesta-D-F5-c-texto-claro.md`. Pendiente humano: validación en dispositivo (D-F5-c + PWA + checklist W). F6.5 condional después.
 - **Fix 2026-09-20 (T4.3):** `spike.html` constraints ahora piden solo presupuesto de píxeles sin ratio;
   aviso de cap >3500px añadido al log. Re-validado sin errores.
 - **Aprobación humana 2026-09-22 (FPS, condicional):** estrategia A-primero —
@@ -383,6 +387,17 @@ de entorno/infraestructura se registra aquí (trazabilidad — auditoría F2-b).
 - **D-F5-b (registrada · F5):** CLAHE 2.0/8×8 usa LUT de la celda sin
   interpolación bilineal entre vecinas para mantener el budget; banding/rejilla
   queda pendiente de CER + revisión visual humana en el harness.
+- **D-F5-c (registrada · 2026-09-26 · petición humana con video Adobe Scan):**
+  set de filtros renombrado a Color original/Escala de grises/Color
+  automático/Texto claro; modo `bw` (Sauvola) RETIRADO — legado persistido
+  carga como `text` (normalizeEnhanceMode). Modo `text` = corrección de
+  sombras + white-point p80 + S-curve (pivote 0.72, contraste 1.35), SIN
+  binarización. Constantes INICIALES de ingeniería; validar con CER + revisión
+  visual antes de congelar. Además (misma ronda): quad inválido deja de
+  bloquear (warp con bounding box, status 'fallback'), snap de esquinas a la
+  detección automática (radio 4% lado largo, máx 3 gestos), fix aliasing
+  detached-bitmap en harness f5, botón "Volver a auto" → "Detección
+  automática". Ver `PLAN_EVIDENCE/F5/propuesta-D-F5-c-texto-claro.md`.
 - **D1 (aceptada por humano · 2026-09-21 · tarea T1):** formato de referencia A4 → CARTA (8.5 × 11 in). Motivo: estándar regional + disponibilidad real de papel carta en el entorno de medición. A4 queda como alternativa documentada.
 - **D2 (registrada · T1-R4 · spike Android SM-A566E):** la orientación del teléfono afecta el DPI en documentos portrait: vertical ≈ 254 DPI teórico vs horizontal ≈ 196 (el lado corto del sensor alinea con el lado largo del papel). Acción futura: guía de orientación en UI (F1/F2).
 - **D3 (registrada · T1-R4 · spike Android):** criterio de selección de cámara = `focusMode` con "continuous"/"single-shot" (autofocus real). Cámaras solo-[manual] = fixed-focus → descartadas. Validado: cámara 2 (ultra-wide) sin AF y sin torch → descartada.

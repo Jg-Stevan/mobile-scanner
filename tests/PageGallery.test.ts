@@ -85,12 +85,12 @@ describe('preparePages (modo global al export)', () => {
       { id: 'a', blob: new Blob(['raw-a']), mode: 'color' as const, order: 0, ts: 1 },
       { id: 'b', blob: new Blob(['raw-b']), mode: 'natural' as const, order: 1, ts: 2 },
     ];
-    const prepared = await preparePages(pages, 'bw', async (source, mode) => {
-      expect(mode).toBe('bw');
+    const prepared = await preparePages(pages, 'text', async (source, mode) => {
+      expect(mode).toBe('text');
       return new Blob([`${await source.text()}:${mode}`]);
     });
-    expect(prepared.map((p) => p.mode)).toEqual(['bw', 'bw']);
-    expect(await prepared[0]!.blob.text()).toBe('raw-a:bw');
+    expect(prepared.map((p) => p.mode)).toEqual(['text', 'text']);
+    expect(await prepared[0]!.blob.text()).toBe('raw-a:text');
     expect(pages[0]!.mode).toBe('color');
   });
 
@@ -104,12 +104,12 @@ describe('preparePages (modo global al export)', () => {
   });
 });
 
-describe('modeLabel (nomenclatura §F5)', () => {
+describe('modeLabel (nomenclatura D-F5-c — set Adobe Scan)', () => {
   it('4 modos', () => {
-    expect(modeLabel('color')).toBe('Color');
-    expect(modeLabel('gray')).toBe('Gris');
-    expect(modeLabel('bw')).toBe('B/N');
-    expect(modeLabel('natural')).toBe('Natural');
+    expect(modeLabel('color')).toBe('Color original');
+    expect(modeLabel('gray')).toBe('Escala de grises');
+    expect(modeLabel('natural')).toBe('Color automático');
+    expect(modeLabel('text')).toBe('Texto claro');
   });
 });
 
@@ -168,8 +168,8 @@ describe('preparePages con step (F6.5 — el paso viaja al prepare)', () => {
     const pages = [
       { id: 'a', blob: new Blob(['1']), mode: 'gray' as const, order: 0, ts: 1 },
     ];
-    const out = await preparePages(pages, 'bw', async () => new Blob(['x']));
+    const out = await preparePages(pages, 'text', async () => new Blob(['x']));
     expect(out).toHaveLength(1);
-    expect(out[0]!.mode).toBe('bw');
+    expect(out[0]!.mode).toBe('text');
   });
 });

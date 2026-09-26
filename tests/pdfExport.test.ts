@@ -123,7 +123,7 @@ function jpeg(): Uint8Array<ArrayBuffer> {
 }
 
 function page(id: string, order: number, blob: Blob): PageRecord {
-  return { id, blob, mode: id === 'b' ? 'bw' : 'color', order, ts: order };
+  return { id, blob, mode: id === 'b' ? 'text' : 'color', order, ts: order };
 }
 
 describe('pdfBytes (núcleo pdf-lib, blobs PNG reales)', () => {

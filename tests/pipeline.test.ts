@@ -468,17 +468,26 @@ describe('applyMode (enhance §5-F5 en pipeline, sin cv.Mat)', () => {
   const px = (w: number, h: number, fill = 128): Uint8ClampedArray =>
     new Uint8ClampedArray(w * h * 4).fill(fill);
 
-  it('bw → binario 0/255, alpha opaco, mismas dims', () => {
-    const out = applyMode(new MockCv(), px(16, 16), 'bw', 16, 16);
+  it('text → alpha opaco, mismas dims, tinta más oscura que el papel (D-F5-c)', () => {
+    // Entrada: papel claro (200) con franja de tinta (60).
+    const src = new Uint8ClampedArray(16 * 16 * 4);
+    for (let i = 0; i < 16 * 16; i++) {
+      const v = i % 16 < 4 ? 60 : 200;
+      src[i * 4] = v;
+      src[i * 4 + 1] = v;
+      src[i * 4 + 2] = v;
+      src[i * 4 + 3] = 255;
+    }
+    const out = applyMode(new MockCv(), src, 'text', 16, 16);
     expect(out.width).toBe(16);
     expect(out.height).toBe(16);
     expect(out.data).toHaveLength(16 * 16 * 4);
-    for (let i = 0; i < out.data.length; i += 4) {
-      expect([0, 255]).toContain(out.data[i]); // R canal ya es el valor binario
-      expect(out.data[i + 1]).toBe(out.data[i]);
-      expect(out.data[i + 2]).toBe(out.data[i]);
-      expect(out.data[i + 3]).toBe(255);
-    }
+    const paper = out.data[8 * 4]!;
+    const ink = out.data[1 * 4]!;
+    expect(paper).toBeGreaterThanOrEqual(240); // papel a blanco
+    expect(ink).toBeLessThan(paper); // tinta dominante
+    expect(ink).toBeGreaterThan(0); // sin binarización dura
+    expect(out.data[3]).toBe(255);
   });
 
   it('gray → gris uniforme opaco (entrada uniforme 128)', () => {
@@ -504,7 +513,7 @@ describe('applyMode (enhance §5-F5 en pipeline, sin cv.Mat)', () => {
   });
 
   it('dimensiones incoherentes → data vacía (validator)', () => {
-    expect(applyMode(new MockCv(), px(16, 16), 'bw', 32, 32).data.length).toBe(0);
+    expect(applyMode(new MockCv(), px(16, 16), 'text', 32, 32).data.length).toBe(0);
     expect(applyMode(new MockCv(), new Uint8ClampedArray(0), 'gray', 16, 16).data.length).toBe(0);
   });
 

@@ -57,8 +57,12 @@ export interface CameraProfile {
 
 /** Modo de procesamiento de la cola multipágina (§5-F5): 4 modos del pipeline.
  *  Compartido por ScanPage, el protocolo del worker (EnhanceRequest) y el
- *  export de PDF. Per-page override PROHIBIDO (orden F5): el modo es global. */
-export type EnhanceMode = 'color' | 'gray' | 'bw' | 'natural';
+ *  export de PDF. Per-page override PROHIBIDO (orden F5): el modo es global.
+ *  D-F5-c (2026-09-26, petición humana con video Adobe Scan): 'bw' (Sauvola)
+ *  se RETIRA y entra 'text' (Texto claro); set final = Color original /
+ *  Escala de grises / Color automático / Texto claro. Legado 'bw' → 'text'
+ *  vía normalizeEnhanceMode (pageStore). */
+export type EnhanceMode = 'color' | 'gray' | 'natural' | 'text';
 
 /** Página escaneada dentro de la cola multipágina (§5-F5). */
 export interface ScanPage {

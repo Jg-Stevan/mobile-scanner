@@ -888,14 +888,37 @@ describe('F4: edición de esquinas (FSM editing)', () => {
     expect(t.ctl.getState()).toBe('detecting');
   });
 
-  it('submitEditedQuad inválido (área < 25% frame) → invalid, sigue editing, sin warp', async () => {
+  it('submitEditedQuad inválido (área < 25%) → fallback con BOUNDING BOX, guarda igual (2026-09-26)', async () => {
     const t = setupF4();
     await capture(t);
     t.ctl.openEditor();
-    expect(await t.ctl.submitEditedQuad(TINY)).toBe('invalid');
-    expect(t.ctl.getState()).toBe('editing');
-    expect(t.warps).toHaveLength(1); // sin re-warp
-    expect(t.events.edited).toHaveLength(0);
+    expect(await t.ctl.submitEditedQuad(TINY)).toBe('fallback');
+    // Ya NO bloquea: warp con el bounding box del quad (axis-aligned TL,TR,BR,BL)
+    expect(t.warps).toHaveLength(2);
+    expectQuadClose(t.warps[1]!.quad, [0, 0, 100 / 3000, 0, 100 / 3000, 100 / 4000, 0, 100 / 4000]);
+    expect(t.events.edited).toHaveLength(1);
+    const photo = t.events.edited[0] as PhotoF4;
+    expect(photo.adjustedQuad).toEqual(TINY); // el ajuste original queda en evidencia
+    expect(photo.needsEditorReview).toBe(true); // el bounding box puede no ser lo deseado
+    expect(t.ctl.getState()).toBe('captured'); // guardó y salió del editor
+    await new Promise((r) => setTimeout(r, 40));
+    expect(t.ctl.getState()).toBe('detecting');
+  });
+
+  it('submitEditedQuad cruzado (mariposa) → fallback con bounding box (no propagar el cruce al warp)', async () => {
+    const t = setupF4();
+    await capture(t);
+    t.ctl.openEditor();
+    const crossed: Quadrilateral = [
+      { x: 600, y: 1200 },
+      { x: 2400, y: 3000 },
+      { x: 2400, y: 1200 },
+      { x: 600, y: 3000 },
+    ];
+    expect(await t.ctl.submitEditedQuad(crossed)).toBe('fallback');
+    // Bounding box: x 600..2400, y 1200..3000 — nunca el polígono cruzado.
+    expectQuadClose(t.warps[1]!.quad, [0.2, 0.3, 0.8, 0.3, 0.8, 0.75, 0.2, 0.75]);
+    expect((t.events.edited[0] as PhotoF4).needsEditorReview).toBe(true);
   });
 
   it('revertEditedQuad: re-warp con el AUTO (refinado), descarta el ajuste, sigue editing', async () => {

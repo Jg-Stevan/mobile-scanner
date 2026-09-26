@@ -38,6 +38,17 @@ export const EDITOR_LOUPE_RADIUS = 84;
  *  touch") — el radio de hit/dibujo es touchPadPx/2. */
 export const EDITOR_TOUCH_PX = 44;
 
+/** Radio de snap de esquinas al recorte manual, como fracción del lado largo
+ *  de la foto (2026-09-26, petición humana — patrón Adobe Scan: acercar el
+ *  handle a la esquina detectada la ajusta sola). 4% del lado largo ≈ 160px
+ *  en una foto de 4000px: đủ precisión para "apuntar" sin robar el control. */
+export const EDITOR_SNAP_RADIUS_FRACTION = 0.04;
+
+/** Tras N gestos de arrastre del usuario el snap se DESACTIVA para esa sesión
+ *  del editor (petición humana 2026-09-26: "si se modifica más de 3 veces por
+ *  el usuario no insistir — puede que no esté alineado con lo que quiere"). */
+export const EDITOR_SNAP_MAX_GESTURES = 3;
+
 // ---------------------------------------------------------------------------
 // Matemática pura (testeada en tests/adjustEditor.test.ts)
 // ---------------------------------------------------------------------------
@@ -183,6 +194,58 @@ export function fractionsToQuadPx(
   ];
 }
 
+/** Esquina auto-detectada (fracciones) → quad en fracciones (TL,TR,BR,BL).
+ *  Targets del snap: SIEMPRE el auto (quadRefined ?? quad), nunca adjustedQuad
+ *  — el snap imita la detección, no el ajuste previo del humano. */
+export function autoQuadFractions(photo: {
+  quad: Quadrilateral | null;
+  quadRefined: Quadrilateral | null;
+  frameW: number;
+  frameH: number;
+}): Float32Array | null {
+  const raw = photo.quadRefined ?? photo.quad;
+  if (raw === null || !(photo.frameW > 0) || !(photo.frameH > 0)) return null;
+  const out = new Float32Array(8);
+  for (let i = 0; i < 4; i++) {
+    const x = raw[i]!.x;
+    const y = raw[i]!.y;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    out[2 * i] = clampFraction(x / photo.frameW);
+    out[2 * i + 1] = clampFraction(y / photo.frameH);
+  }
+  return out;
+}
+
+/** Snap de la esquina arrastrada (fx,fy) a la esquina auto-detectada más
+ *  cercana DENTRO del radio (fracción del lado largo de la foto, medida en px
+ *  de foto — anisotrópico correcto en fotos no cuadradas). null = sin snap:
+ *  el handle sigue al dedo. Pura y testeable (2026-09-26, petición humana). */
+export function snapCorner(
+  fx: number,
+  fy: number,
+  targets: Float32Array | null,
+  radiusFraction: number,
+  frameW: number,
+  frameH: number,
+): { x: number; y: number } | null {
+  if (targets === null || targets.length !== 8) return null;
+  const longSide = Math.max(frameW, frameH);
+  if (!(longSide > 0) || !(radiusFraction > 0)) return null;
+  const radiusPx = radiusFraction * longSide;
+  let best: { x: number; y: number } | null = null;
+  let bestDist = Infinity;
+  for (let i = 0; i < 4; i++) {
+    const tx = targets[2 * i]!;
+    const ty = targets[2 * i + 1]!;
+    const d = Math.hypot((fx - tx) * frameW, (fy - ty) * frameH);
+    if (d <= radiusPx && d < bestDist) {
+      bestDist = d;
+      best = { x: tx, y: ty };
+    }
+  }
+  return best;
+}
+
 // ---------------------------------------------------------------------------
 // Clase (DOM ligera; contexto inyectado; sin document global)
 // ---------------------------------------------------------------------------
@@ -227,6 +290,14 @@ export class AdjustEditor {
   private fractions = defaultQuadFractions();
   private preview: HTMLCanvasElement | null = null;
   private dragIndex: number | null = null;
+  /** Esquinas auto-detectadas (targets del snap); null = captura sin detección
+   *  → sin snap. Se recalcula en cada open(). */
+  private autoTargets: Float32Array | null = null;
+  /** Gestos de arrastre completados en ESTA sesión del editor: al llegar a
+   *  EDITOR_SNAP_MAX_GESTURES el snap se desactiva (el humano manda). */
+  private gestures = 0;
+  /** true mientras el handle arrastrado esté snapsheado a un target. */
+  private snapped = false;
 
   constructor(opts: AdjustEditorOptions) {
     this.callbacks = opts.callbacks;
@@ -240,7 +311,16 @@ export class AdjustEditor {
         c.width = w;
         c.height = h;
         const ctx = c.getContext('2d');
-        if (ctx !== null) ctx.drawImage(bitmap, 0, 0, w, h);
+        try {
+          if (ctx !== null) ctx.drawImage(bitmap, 0, 0, w, h);
+        } catch (err) {
+          // Guard detached-bitmap (2026-09-26): un bitmap cerrado por el
+          // ciclo de vida del harness no debe matar el editor con una
+          // excepción críptica del navegador.
+          throw new Error('La captura fue cerrada — reabre el editor desde la captura actual', {
+            cause: err,
+          });
+        }
         return c;
       });
     this.ctx = this.canvas.getContext('2d');
@@ -266,6 +346,11 @@ export class AdjustEditor {
     this.photo = photo;
     this.fellBack = fellBack;
     this.fractions = initialQuadFractions(photo).slice();
+    // Snap (2026-09-26): targets = esquinas de la DETECCIÓN automática. Cada
+    // open() es una sesión nueva → contador de gestos a cero.
+    this.autoTargets = autoQuadFractions(photo);
+    this.gestures = 0;
+    this.snapped = false;
     const d = previewDims(photo.frameW, photo.frameH);
     this.preview = await this.makePreview(photo.bitmap, d.w, d.h);
     this.root.hidden = false;
@@ -399,22 +484,26 @@ export class AdjustEditor {
       }
     }
 
-    // Handles: ≥44px táctiles (radio = touchPadPx/2).
+    // Handles: ≥44px táctiles (radio = touchPadPx/2). El handle snapsheado se
+    // pinta VERDE (2026-09-26): feedback de "esquina de página tomada".
     for (let i = 0; i < 4; i++) {
       const hp = fractionsToDisplay(this.fractions[2 * i]!, this.fractions[2 * i + 1]!, r);
       ctx.beginPath();
       ctx.arc(hp.x, hp.y, this.touchPadPx / 2, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.92)';
       ctx.fill();
-      ctx.strokeStyle = this.dragIndex === i ? '#eab308' : '#111';
+      const isSnapped = this.dragIndex === i && this.snapped;
+      ctx.strokeStyle = isSnapped ? '#22c55e' : this.dragIndex === i ? '#eab308' : '#111';
       ctx.lineWidth = this.dragIndex === i ? 4 : 2;
       ctx.stroke();
     }
 
     // Banner de quad inválido (encima de todo, dentro del canvas — el toast
     // del harness queda bajo este overlay: ver nota en el polígono).
+    // 2026-09-26 (petición humana): DEJA de bloquear — una captura trocida se
+    // puede guardar; el orchestrator re-warpéa con el bounding box y avisa.
     if (!valid) {
-      const msg = 'Quad inválido: esquinas cruzadas o lados degenerados — corrígelo antes de confirmar';
+      const msg = 'Quad inválido — se guardará el recuadro ajustado (bounding box)';
       ctx.font = '700 13px system-ui, sans-serif';
       const tw = ctx.measureText(msg).width;
       const bw = Math.min(w - 16, tw + 24);
@@ -518,14 +607,32 @@ export class AdjustEditor {
       if (this.dragIndex === null || this.photo === null) return;
       const p = toLocal(e);
       const f = displayToFractions(p.x, p.y, this.display());
-      this.fractions[2 * this.dragIndex] = f.x;
-      this.fractions[2 * this.dragIndex + 1] = f.y;
+      // Snap a esquina auto-detectada (2026-09-26): vivo durante el drag — el
+      // handle salta al target al entrar en radio y escapa al salir. Tras
+      // EDITOR_SNAP_MAX_GESTURES gestos, se apaga (el humano manda).
+      const snapAllowed =
+        this.autoTargets !== null && this.gestures < EDITOR_SNAP_MAX_GESTURES;
+      const target = snapAllowed
+        ? snapCorner(
+            f.x,
+            f.y,
+            this.autoTargets,
+            EDITOR_SNAP_RADIUS_FRACTION,
+            this.photo.frameW,
+            this.photo.frameH,
+          )
+        : null;
+      this.snapped = target !== null;
+      this.fractions[2 * this.dragIndex] = target !== null ? target.x : f.x;
+      this.fractions[2 * this.dragIndex + 1] = target !== null ? target.y : f.y;
       this.render();
       this.renderLoupe();
     });
     const end = (): void => {
       if (this.dragIndex === null) return;
+      this.gestures++;
       this.dragIndex = null;
+      this.snapped = false;
       this.render();
     };
     canvas.addEventListener('pointerup', end);

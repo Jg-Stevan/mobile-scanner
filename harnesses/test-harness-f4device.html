@@ -124,7 +124,7 @@
   <div id="editorErr"></div>
   <div class="row" id="editorBtns">
     <button id="confirmBtn">✓ Confirmar</button>
-    <button id="revertBtn">↺ Volver a auto</button>
+    <button id="revertBtn">↺ Detección automática</button>
     <button id="cancelBtn">✕ Cancelar</button>
   </div>
   <div style="max-width:640px;color:#bbb;font-size:12px;text-align:center">
@@ -324,11 +324,14 @@ async function main() {
         // no funciona"). El estado invalid también lo pinta el editor en vivo
         // (borde rojo + banner en el canvas).
         void orch.submitEditedQuad(quad).then((r) => {
-          if (r === 'invalid') {
-            const msg = 'Quad inválido (cruce/área/lados) — corrige las esquinas rojas';
+          if (r === 'fallback') {
+            // 2026-09-26: quad inválido DEJA de bloquear — se guardó con
+            // bounding box; aviso no fatal y el editor sí cierra.
+            const msg = 'Quad inválido — se guardó el recuadro ajustado (bounding box)';
             toast(msg);
             $('editorErr').textContent = msg;
-            return;
+          } else {
+            $('editorErr').textContent = '';
           }
           if (r === 'busy') {
             const msg = 'FSM ocupado — reintenta';
@@ -348,7 +351,7 @@ async function main() {
         // Re-warp con el auto + reset de los handles a las esquinas automáticas.
         void orch.revertEditedQuad().then((ok) => {
           if (!ok) {
-            const msg = 'Sin quad automático que revertir (captura manual): ajusta las esquinas y confirma';
+            const msg = 'Sin detección automática que aplicar (captura manual): ajusta las esquinas y confirma';
             toast(msg);
             $('editorErr').textContent = msg;
             return;

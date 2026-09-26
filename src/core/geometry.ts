@@ -124,6 +124,26 @@ export function validateQuad(q: Quadrilateral, frameW: number, frameH: number): 
   return true;
 }
 
+/** Bounding box axis-aligned del quad en orden TL,TR,BR,BL (2026-09-26, petición
+ *  humana: el quad inválido DEJA de bloquear el guardado — capturas trocidas se
+ *  pueden guardar). Si el quad tiene coordenadas no finitas, se propagan: el
+ *  consumidor (warpPhoto) ya rechaza quads no finitos. Es el rectángulo seguro
+ *  que reemplaza un quad cruzado/degenerado para warpPerspective. */
+export function quadBoundingBox(q: Quadrilateral): Quadrilateral {
+  const xs = q.map((c) => c.x);
+  const ys = q.map((c) => c.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  return [
+    { x: minX, y: minY },
+    { x: maxX, y: minY },
+    { x: maxX, y: maxY },
+    { x: minX, y: maxY },
+  ];
+}
+
 /** Gate F3 (§5-F3): ¿w1/h1 ≈ w2/h2 dentro de tol relativa? PROHIBIDO hardcodear
  *  ratios (16:9/4:3): todo llega por parámetros. */
 export function sameAspectRatio(

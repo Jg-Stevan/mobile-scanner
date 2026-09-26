@@ -22,7 +22,7 @@ import {
   detectionTimedOut,
   shouldTriggerShutter,
 } from '../core/quality';
-import { scaleQuad, validateQuad } from '../core/geometry';
+import { quadBoundingBox, scaleQuad, validateQuad } from '../core/geometry';
 import type { DetectRequest, RawQualityInput, WarpRequest } from '../workers/protocol';
 import { computeProcessDims } from '../workers/protocol';
 import { assembleRefinedQuad, needsEditorReview } from './cornerRefiner';
@@ -438,15 +438,25 @@ export class ScanOrchestrator {
    *  cierra). Tras el warp, la decisión de estado: no existe 'saved' en este
    *  orquestador → la captura vuelve a 'captured' (con el warped actualizado)
    *  y el cooldown NORMAL la devuelve a 'detecting' (mismo timer de runBurst;
-   *  ver exitEditingWithCooldown). */
-  async submitEditedQuad(quad: Quadrilateral): Promise<'ok' | 'invalid' | 'busy'> {
+   *  ver exitEditingWithCooldown).
+   *  2026-09-26 (petición humana): el quad inválido DEJA de bloquear — una
+   *  captura trocida se puede guardar. Quad válido → warp normal ('ok');
+   *  inválido (cruzado/degenerado/área/lados) → warp con el bounding box
+   *  axis-aligned (única forma segura de warpear sin polígono cruzado),
+   *  needsEditorReview=true y status 'fallback' (el harness avisa y cierra). */
+  async submitEditedQuad(quad: Quadrilateral): Promise<'ok' | 'fallback' | 'busy'> {
     if (this.state !== 'editing' || this.currentPhoto === null) return 'busy';
     const p = this.currentPhoto;
-    if (!validateQuad(quad, p.frameW, p.frameH)) return 'invalid';
-    const warped = await this.warpPhoto(p.bitmap, p.frameW, p.frameH, quad);
+    const valid = validateQuad(quad, p.frameW, p.frameH);
+    const warped = await this.warpPhoto(
+      p.bitmap,
+      p.frameW,
+      p.frameH,
+      valid ? quad : quadBoundingBox(quad),
+    );
     const updated: CapturedPhoto = {
       ...p,
-      needsEditorReview: false, // el humano asumió la revisión (confirmó)
+      needsEditorReview: !valid, // fallback: el bounding box puede no ser el recorte deseado
       warped: warped.bitmap,
       warpW: warped.w,
       warpH: warped.h,
@@ -457,7 +467,7 @@ export class ScanOrchestrator {
     this.currentPhoto = updated;
     this.events.onEdited(updated);
     this.exitEditingWithCooldown();
-    return 'ok';
+    return valid ? 'ok' : 'fallback';
   }
 
   /** Revierte el ajuste: re-warp con el quad automático ORIGINAL

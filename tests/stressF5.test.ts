@@ -53,7 +53,7 @@ describe.skipIf(!enabled)('F5 Node stress', () => {
         },
       },
     ) as CvApi;
-    const modes = ['color', 'gray', 'bw', 'natural'] as const;
+    const modes = ['color', 'gray', 'natural', 'text'] as const;
     const start = Date.now();
     let iterations = 0;
     let errors = 0;

@@ -86,17 +86,18 @@ export async function preparePages(
   return out;
 }
 
-/** Texto del modo para el selector (sigue la nomenclatura §F5). */
+/** Texto del modo para el selector (D-F5-c 2026-09-26: nomenclatura del set
+ *  de filtros de Adobe Scan elegido por el humano). */
 export function modeLabel(mode: EnhanceMode): string {
   switch (mode) {
     case 'color':
-      return 'Color';
+      return 'Color original';
     case 'gray':
-      return 'Gris';
-    case 'bw':
-      return 'B/N';
+      return 'Escala de grises';
     case 'natural':
-      return 'Natural';
+      return 'Color automático';
+    case 'text':
+      return 'Texto claro';
   }
 }
 
@@ -254,7 +255,7 @@ export class PageGallery {
     bar.appendChild(counter);
     const sel = doc.createElement('select');
     sel.className = 'pg-mode';
-    for (const m of ['color', 'gray', 'bw', 'natural'] as const) {
+    for (const m of ['color', 'gray', 'natural', 'text'] as const) {
       const opt = doc.createElement('option');
       opt.value = m;
       opt.textContent = modeLabel(m);

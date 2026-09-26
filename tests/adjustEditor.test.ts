@@ -8,6 +8,8 @@ import {
   EDITOR_LOUPE_RADIUS,
   EDITOR_LOUPE_SCALE,
   EDITOR_PREVIEW_LONG_SIDE,
+  EDITOR_SNAP_MAX_GESTURES,
+  EDITOR_SNAP_RADIUS_FRACTION,
   EDITOR_TOUCH_PX,
   clampFraction,
   defaultQuadFractions,
@@ -17,7 +19,9 @@ import {
   hitTestHandle,
   initialQuadFractions,
   loupeRect,
+  autoQuadFractions,
   previewDims,
+  snapCorner,
   sideReviewBadges,
   AdjustEditor,
 } from '../src/ui/AdjustEditor';
@@ -257,5 +261,54 @@ describe('F4 editor: fracciones → quad en px de la foto (contrato onConfirm)',
     expect(q[2]!.y).toBeCloseTo(3200, 3);
     expect(q[3]!.x).toBeCloseTo(600, 3);
     expect(q[3]!.y).toBeCloseTo(3200, 3);
+  });
+});
+describe('Editor snap a esquina de página (2026-09-26, petición humana)', () => {
+  const FRAME = { frameW: 3000, frameH: 4000 };
+  const AUTO: Quadrilateral = [
+    { x: 600, y: 400 },
+    { x: 2400, y: 400 },
+    { x: 2400, y: 3600 },
+    { x: 600, y: 3600 },
+  ];
+
+  it('autoQuadFractions: quad auto → 8 fracciones; sin auto → null', () => {
+    const t = autoQuadFractions({ ...FRAME, quad: AUTO, quadRefined: null });
+    expect(t).not.toBeNull();
+    expect(t![0]).toBeCloseTo(0.2, 5);
+    expect(t![7]).toBeCloseTo(0.9, 5);
+    // refined tiene prioridad sobre quad
+    const t2 = autoQuadFractions({ ...FRAME, quad: AUTO, quadRefined: AUTO });
+    expect(t2).not.toBeNull();
+    expect(autoQuadFractions({ ...FRAME, quad: null, quadRefined: null })).toBeNull();
+  });
+
+  it('snapCorner: dentro del radio → salta al target; fuera → null (sigue el dedo)', () => {
+    const targets = autoQuadFractions({ ...FRAME, quad: AUTO, quadRefined: null })!;
+    // A 60px del target TL (radio = 4% de 4000 = 160px) → snap
+    const hit = snapCorner(0.2 + 60 / 3000, 0.1, targets, EDITOR_SNAP_RADIUS_FRACTION, 3000, 4000);
+    expect(hit).toEqual({ x: targets[0], y: targets[1] });
+    // A 400px del target más cercano → sin snap
+    const miss = snapCorner(0.2 + 400 / 3000, 0.1, targets, EDITOR_SNAP_RADIUS_FRACTION, 3000, 4000);
+    expect(miss).toBeNull();
+  });
+
+  it('snapCorner: el más CERCANO gana cuando dos targets están en el radio', () => {
+    const targets = new Float32Array([0.2, 0.2, 0.24, 0.2, 0.8, 0.8, 0.2, 0.8]);
+    // entre TL y TR (96px de separación en x): a la izquierda → TL
+    const hit = snapCorner(0.207, 0.2, targets, EDITOR_SNAP_RADIUS_FRACTION, 3000, 4000);
+    expect(hit!.x).toBeCloseTo(0.2, 5);
+  });
+
+  it('snapCorner: targets null / radius 0 / dims inválidas → null (sin snap)', () => {
+    expect(snapCorner(0.5, 0.5, null, 0.04, 3000, 4000)).toBeNull();
+    const t = new Float32Array(8);
+    expect(snapCorner(0.5, 0.5, t, 0, 3000, 4000)).toBeNull();
+    expect(snapCorner(0.5, 0.5, t, 0.04, 0, 0)).toBeNull();
+  });
+
+  it('invariantes: radio 4% del lado largo, máx 3 gestos (origen: petición humana)', () => {
+    expect(EDITOR_SNAP_RADIUS_FRACTION).toBe(0.04);
+    expect(EDITOR_SNAP_MAX_GESTURES).toBe(3);
   });
 });

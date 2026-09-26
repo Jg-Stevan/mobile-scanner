@@ -87,7 +87,7 @@ label{display:inline-flex;align-items:center;gap:5px}
   <div id="editorErr"></div>
   <div class="row" id="editorBtns">
     <button id="editorConfirmBtn">Confirmar</button>
-    <button id="editorRevertBtn">Volver a auto</button>
+    <button id="editorRevertBtn">Detección automática</button>
     <button id="editorCancelBtn">Cancelar</button>
   </div>
   <div id="editorHelp">Arrastra las 4 esquinas (mínimo 44px táctiles). La lupa 3× aparece en el lado opuesto del dedo. Badge ámbar = lado que el refiner marcó para revisión.</div>
@@ -188,7 +188,7 @@ let cerResult=null;
 let lastEnhanceMs=0;
 let lastApplyMs=0;
 const pending=new Map();
-const modes=['color','gray','bw','natural'];
+const modes=['color','gray','natural','text'];
 
 function closeBitmap(bitmap){
   if(!bitmap)return;
@@ -333,7 +333,13 @@ function createOrchestrator(view,scoreView){
       onScore:score=>scoreView.render(score.total,score.hint),
       onCaptured:photo=>{
         captures++;$('mCap').textContent=String(captures);
-        if(lastPhoto&&lastPhoto!==photo){closeBitmap(lastPhoto.warped);closeBitmap(lastPhoto.bitmap)}
+        if(lastPhoto&&lastPhoto!==photo){
+          // Fix detached-bitmap (2026-09-26): submitEditedQuad/revertEditedQuad
+          // devuelven {...p} — el bitmap de la foto nueva PUEDE ser el mismo
+          // objeto. Cerrar solo lo genuinamente supersedido (semántica f4).
+          if(lastPhoto.bitmap!==photo.bitmap)closeBitmap(lastPhoto.bitmap);
+          if(lastPhoto.warped!==photo.warped)closeBitmap(lastPhoto.warped);
+        }
         lastPhoto=photo;
         const visible=photo.warped??photo.bitmap;
         drawFit(visible,photo.warped?'WARPED':'CRUDO');
@@ -345,7 +351,13 @@ function createOrchestrator(view,scoreView){
         bitmapToBlob(visible).then(blob=>{lastSourceBlob=blob;$('addBtn').disabled=false}).catch(e=>showErr(`Fuente: ${e.message}`));
       },
       onEdited:photo=>{
-        if(lastPhoto&&lastPhoto!==photo){closeBitmap(lastPhoto.warped);closeBitmap(lastPhoto.bitmap)}
+        if(lastPhoto&&lastPhoto!==photo){
+          // Fix detached-bitmap (2026-09-26): submitEditedQuad/revertEditedQuad
+          // devuelven {...p} — el bitmap de la foto nueva PUEDE ser el mismo
+          // objeto. Cerrar solo lo genuinamente supersedido (semántica f4).
+          if(lastPhoto.bitmap!==photo.bitmap)closeBitmap(lastPhoto.bitmap);
+          if(lastPhoto.warped!==photo.warped)closeBitmap(lastPhoto.warped);
+        }
         lastPhoto=photo;const visible=photo.warped??photo.bitmap;drawFit(visible,'WARPED EDITADO');
         $('thumbLabel').textContent='WARPED EDITADO'; // F6.5: faltaba (quedaba CRUDO)
         bitmapToBlob(visible).then(blob=>{lastSourceBlob=blob;$('addBtn').disabled=false});
@@ -446,7 +458,7 @@ async function runCer(){
 async function runStress(durationMs=600000){
   if(!started)throw Error('stress requiere cámara iniciada');
   const source=stressSource??$('v');
-  const modesRotating=['color','gray','bw','natural'];
+  const modesRotating=['color','gray','natural','text'];
   const counts={detect:0,warp:0,enhance:0,errors:0};
   const enhanceTimes=[];
   const workerHeap=[];
@@ -503,7 +515,8 @@ const editor=new AdjustEditor({
   callbacks:{
     onConfirm:quad=>{
       void window.__f5orch?.submitEditedQuad(quad).then(r=>{
-        if(r==='invalid'){const msg='Quad inválido (cruce/área/lados) — corrige las esquinas rojas';toast(msg);$('editorErr').textContent=msg;return}
+        if(r==='fallback'){const msg='Quad inválido — se guardó el recuadro ajustado (bounding box)';toast(msg);$('editorErr').textContent=msg}
+        else{$('editorErr').textContent=''}
         if(r==='busy'){const msg='FSM ocupado — reintenta';toast(msg);$('editorErr').textContent=msg;return}
         $('editorErr').textContent='';
         editor.close();
@@ -511,7 +524,7 @@ const editor=new AdjustEditor({
     },
     onRevert:()=>{
       void window.__f5orch?.revertEditedQuad().then(ok=>{
-        if(!ok){const msg='Sin quad automático que revertir (captura manual): ajusta las esquinas y confirma';toast(msg);$('editorErr').textContent=msg;return}
+        if(!ok){const msg='Sin detección automática que aplicar (captura manual): ajusta las esquinas y confirma';toast(msg);$('editorErr').textContent=msg;return}
         $('editorErr').textContent='';
         void editor.open(lastPhoto,fbOf(lastPhoto));
       }).catch(e=>{const msg=`Revert: ${e.message}`;showErr(msg);$('editorErr').textContent=msg});

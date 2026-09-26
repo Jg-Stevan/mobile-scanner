@@ -10,6 +10,7 @@
 // pdfExport.ts, que es puro allí y DOM solo para el share aquí).
 
 import { quotaReport, type QuotaReport } from '../core/dataCollect';
+import { normalizeEnhanceMode } from '../core/imageModes';
 import type { EnhanceMode } from '../core/types';
 
 /** Meta <8MB del PDF multipágina (§F5 DoD: "PDF < 3MB" según páginas; la cota
@@ -122,7 +123,10 @@ export class PageStore {
   async pages(): Promise<PageRecord[]> {
     const tx = this.idb.transaction('pages', 'readonly');
     const all = await reqAs<PageRecord[]>(tx.objectStore('pages').getAll());
-    return all.sort((a, b) => a.order - b.order);
+    // D-F5-c: páginas persistidas con el modo legado 'bw' cargan como 'text'.
+    return all
+      .sort((a, b) => a.order - b.order)
+      .map((r) => ({ ...r, mode: normalizeEnhanceMode(r.mode) }));
   }
 
   async count(): Promise<number> {

@@ -117,11 +117,11 @@ describe('PageStore (fake IDB)', () => {
   it('addPage encola al final (order = max+1)', async () => {
     const { ps } = setup();
     await ps.addPage(new Blob([]), 'color', 1);
-    await ps.addPage(new Blob([]), 'bw', 2);
+    await ps.addPage(new Blob([]), 'text', 2);
     const pages = await ps.pages();
     expect(pages.map((p) => p.order)).toEqual([0, 1]);
     expect(pages[0]!.mode).toBe('color');
-    expect(pages[1]!.mode).toBe('bw');
+    expect(pages[1]!.mode).toBe('text');
     expect(await ps.count()).toBe(2);
   });
 
@@ -152,7 +152,7 @@ describe('PageStore (fake IDB)', () => {
   it('remove elimina (el drag/applyOrder normaliza índices después)', async () => {
     const { ps } = setup();
     await ps.addPage(new Blob([]), 'color', 1);
-    await ps.addPage(new Blob([]), 'bw', 2);
+    await ps.addPage(new Blob([]), 'text', 2);
     await ps.addPage(new Blob([]), 'gray', 3);
     await ps.remove('id-1');
     const pages = await ps.pages();
@@ -170,7 +170,7 @@ describe('PageStore (fake IDB)', () => {
     expect(pdf!.type).toBe('application/pdf');
     expect(await pdf!.text()).toBe('pdf:1');
 
-    const override = { ...stored, blob: new Blob(['processed']), mode: 'bw' as const };
+    const override = { ...stored, blob: new Blob(['processed']), mode: 'text' as const };
     expect(await (await ps.exportPdf({ pages: [override] }))!.text()).toBe('pdf:1');
   });
 

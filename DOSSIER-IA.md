@@ -57,11 +57,11 @@
 | F2 | Score de calidad + auto-shutter (burst-rank, k-de-n) | ✅ COMPLETADA (2026-09-22, re-test humano aprobado) |
 | F3 | Captura hi-res + re-detección + CornerRefiner + warp (CRÍTICA) | ✅ COMPLETADA (2026-09-23, código + 2 dispositivos) |
 | F4 | Editor de esquinas + colector de dataset + diana de calibración | ✅ COMPLETADA (2026-09-25, validada en SM-A566E + iPhone 17 Pro: editor con 3 adjustedQuad, colector 17/17 contrato, diana ±58.44/±23.99 mm al 95%) |
-| F5 | Multipágina + 4 modos de imagen + PDF | 🟡 En curso (314/314 tests, PDF E2E 5 págs <1MB, estrés 10min limpio) — falta revisión visual humana (banding CLAHE) |
-| F6 | PWA + telemetría (Sentry) + endurecimiento | ⚪ No iniciada |
+| F5 | Multipágina + 4 modos de imagen + PDF | 🟡 En curso (evidencia humana subida 2026-09-25 en PLAN_EVIDENCE/F5/validacion/ — veredicto externo pendiente; D-F5-c 2026-09-26 cambia el set de modos) |
+| F6 | PWA + telemetría (Sentry) + endurecimiento | 🟡 Código completo y desplegado (F6.1..F6.4, 356→372 tests) — falta validación humana en dispositivo (PWA/pruebas A/B/checklist W) + DSN Sentry |
 | F6.5 | Modelo ONNX (YOLOv8n-pose) | ⚪ Condicional: solo si telemetría post-MVP muestra >15% ajustes manuales |
 
-**Números actuales:** 314/314 tests verdes · tsc limpio · estrés 10 min 0 errores (heap 12.45→12.14MB en Node) · applyMode Node 2040×2640: Color 1.49s / Gris 1.01s / B-N 1.36s / Natural 1.19s · PDF 5 páginas = 907KB (<8MB DoD).
+**Números actuales (2026-09-26):** 372/372 tests verdes (D-F5-c incluida) · tsc limpio · estrés 10 min 0 errores · PDF 5 páginas = 907KB (<8MB DoD). Set de modos D-F5-c: Color original / Escala de grises / Color automático / Texto claro.
 
 ## 5. Decisiones y desviaciones clave (resumen ejecutivo)
 
@@ -77,6 +77,7 @@
 | D8 | Proceso a 300px RECHAZADO: precisión > fluidez en documentos densos; el botón manual cubre el extremo. |
 | D-F5 | OpenCV.js 4.5.5 no expone `createCLAHE` → los 4 modos se implementan en JS puro dentro del worker, Node-testeable. |
 | D-F5-b | CLAHE usa LUT de celda sin interpolación bilineal (budget); banding pendiente de CER + revisión visual. |
+| D-F5-c | (2026-09-26, humano + video Adobe Scan) Set de filtros: Color original/Escala de grises/Color automático/Texto claro; `bw` retirado (legado→`text`). Modo `text` = sombras+p80+S-curve sin binarizar. Quad inválido no bloquea (bounding box); snap de esquinas (3 gestos); fix detached f5. |
 
 **Hallazgo clave (limitación F1):** papel sobre fondo CLARO (blanco-sobre-blanco) NO se detecta — caso registrado del plan. Escape = botón manual SIEMPRE visible; solución definitiva = F6.5 condicional. No se "arregla" con trampa de umbrales.
 
@@ -108,7 +109,7 @@ ScanOrchestrator (FSM:              tivas + fitLineTrimmed + RANSAC,
   →revalidating→editing)            por lado)
 AdjustEditor (loupe 3×)           ─► warpPerspective INTER_CUBIC
 PageGallery + PageStore             + unsharp 0.5/1.5 (cap 3500px)
-IndexedDB (storage.persist)       ─► enhance JS 4 modos (D-F5)
+IndexedDB (storage.persist)       ─► enhance JS 4 modos: color/gray/natural/text (D-F5+c)
 pdfExport (pdf-lib, Letter/A4)    ─► {corners, score, refined} de vuelta
 ```
 
@@ -145,12 +146,23 @@ mobile-scanner/
 
 ## 9. Pendientes actuales (por si te toca trabajar)
 
-1. **F5:** revisión visual humana del banding CLAHE (D-F5-b) + harness CER Tesseract.
-2. **F6 (EN CURSO):** self-host opencv.js ✓ desplegado · PWA offline ✓ desplegada · telemetría Sentry opt-in ✓ desplegada (falta DSN del humano) · **F6.4 robustez de errores + matriz/checklist semanal ✓ en sandbox** (parche pendiente de aplicar) → cierra §F6 salvo validación en dispositivo.
-3. **Del humano (cuando pueda):** F5 revisión visual en dispositivo · pruebas A/B/PWA + primera ronda del checklist W en ambos teléfonos · crear proyecto Sentry y compartir DSN · `git am f6.4-robustez.patch` + push.
+1. **D-F5-c (2026-09-26) validación en dispositivo:** filtro Texto claro sobre documento arrugado · snap de esquinas · captura trocida guardable · confirm sin error detached · CER por modo (constantes `TEXT_CLARO_*` son iniciales hasta esto).
+2. **F5 (paralelo):** revisión visual humana del banding CLAHE (D-F5-b) + veredicto del revisor externo sobre la evidencia de PLAN_EVIDENCE/F5/validacion/.
+3. **F6:** código completo y desplegado (F6.1..F6.4 aplicados 2026-09-26) — falta validación en dispositivo (PWA/pruebas A/B/checklist W) + crear proyecto Sentry y compartir DSN.
 4. Backlog: build custom OpenCV (~2-3MB solo imgproc) pre-producción · F6.5 ONNX (condicional a telemetría).
 
 ## 10. Changelog del dossier
+
+- **2026-09-26 (8):** D-F5-c — set de filtros estilo Adobe Scan (petición humana
+  con video de referencia): Color original / Escala de grises / Color
+  automático / **Texto claro** (nuevo: sombras+p80+S-curve sin binarización,
+  reemplaza al B/N Sauvola retirado; legado `bw` persistido carga como `text`).
+  Editor: quad inválido DEJA de bloquear (warp con bounding box + status
+  'fallback'), snap de esquinas a la detección automática (radio 4% lado
+  largo, se apaga tras 3 gestos), fix del error detached-bitmap al confirmar
+  en f5 (aliasing de ImageBitmap en onEdited), botón "Volver a auto" →
+  "Detección automática". 372/372 tests, tsc limpio, harnesses+sw
+  regenerados. Propuesta: PLAN_EVIDENCE/F5/propuesta-D-F5-c-texto-claro.md.
 
 - **2026-09-26 (7):** F6.4 robustez de errores + matriz de dispositivos (cierra
   las filas restantes de §F6). `cameraErrors.ts` puro (clasificación por name y

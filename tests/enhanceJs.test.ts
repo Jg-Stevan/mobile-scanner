@@ -16,7 +16,6 @@ import {
   rgbaToGray,
   shadowGain,
 } from '../src/workers/enhanceJs';
-import { sauvolaWindow } from '../src/core/imageModes';
 
 describe('conversiones de color', () => {
   it('rgbaToGray: luma Rec.601 exacta (77/150/29 >> 8)', () => {
@@ -202,7 +201,7 @@ describe('enhanceToRgba — orquestación por modo (§F5)', () => {
     return d;
   }
 
-  for (const mode of ['color', 'gray', 'bw', 'natural'] as const) {
+  for (const mode of ['color', 'gray', 'natural', 'text'] as const) {
     it(`${mode}: opaco, dims intactas, sin NaN`, () => {
       const w = 48;
       const h = 48;
@@ -213,15 +212,18 @@ describe('enhanceToRgba — orquestación por modo (§F5)', () => {
     });
   }
 
-  it('bw produce SOLO 0/255 (bimodal estricto)', () => {
+  it('text: fondo (papel) a blanco, tinta oscura SIN bimodalidad (D-F5-c)', () => {
     const w = 48;
     const h = 48;
-    const out = enhanceToRgba(probeImage(w, h), w, h, 'bw');
-    for (let i = 0; i < out.length; i += 4) {
-      expect([0, 255]).toContain(out[i]!);
-      expect(out[i + 1]).toBe(out[i]);
-      expect(out[i + 2]).toBe(out[i]);
-    }
+    const out = enhanceToRgba(probeImage(w, h), w, h, 'text');
+    const at = (x: number, y: number) => (y * w + x) * 4;
+    // Papel con sombra corregida + estirado p80 + S-curve = blanco casi puro.
+    expect(out[at(40, 4)]!).toBeGreaterThanOrEqual(240);
+    // Tinta (60) claramente ms oscura que el papel, NO 0/255 estricto.
+    expect(out[at(20, 20)]!).toBeLessThan(180);
+    const values = new Set<number>();
+    for (let i = 0; i < out.length; i += 4) values.add(out[i]!);
+    expect(values.size).toBeGreaterThan(2); // no bimodal (antialias conservado)
   });
 
   it('gray es gris neutro (R=G=B)', () => {
@@ -240,7 +242,34 @@ describe('enhanceToRgba — orquestación por modo (§F5)', () => {
     expect(enhanceToRgba(new Uint8ClampedArray(4), 1, 1, 'color').length).toBe(4); // 1×1 válido
   });
 
-  it('la ventana de Sauvola usada en bw es la del core (paridad de spec)', () => {
-    expect(sauvolaWindow(2040, 2640)).toBe(41); // 0.02·2040 = 40.8 → 41
+  it('text: la sombra del probe NO sobrevive (fondo colapsado a blanco)', () => {
+    // 256×256 (mismo rationale del test de shadowGain: el kernel de morfología
+    // solo es baja-frequency a esa escala; a 48px el artefacto de borde domina).
+    const w = 256;
+    const h = 256;
+    const d = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      const base = 220 - (y / h) * 120; // sombra: más oscura abajo
+      for (let x = 0; x < w; x++) {
+        const o = (y * w + x) * 4;
+        // Tinta de escala de GLIFO (barras de 4px, contraste relativo 45%):
+        // un bloque grande lo absorbería el mapa de iluminación (legítimo —
+        // es indistinguible de una sombra a esa escala).
+        const ink = x >= 40 && x < 44 ? base * 0.45 : 0;
+        const v = base - ink;
+        d[o] = v;
+        d[o + 1] = v;
+        d[o + 2] = v;
+        d[o + 3] = 255;
+      }
+    }
+    const out = enhanceToRgba(d, w, h, 'text');
+    const at = (x: number, y: number) => (y * w + x) * 4;
+    // Fondo arriba (220) vs abajo (100): tras corrección de sombra + p80 la
+    // diferencia se colapsa (< 40 de resto) y el papel ronda el blanco.
+    expect(Math.abs(out[at(200, 30)]! - out[at(200, 226)]!)).toBeLessThan(40);
+    expect(out[at(200, 30)]!).toBeGreaterThanOrEqual(215);
+    // La tinta sigue claramente por debajo del papel.
+    expect(out[at(41, 128)]!).toBeLessThan(out[at(200, 30)]! - 60);
   });
 });

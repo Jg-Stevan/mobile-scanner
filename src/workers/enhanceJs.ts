@@ -15,8 +15,10 @@
 
 import {
   ILLUM_MAP_LONG_SIDE,
-  sauvolaBinarize,
+  TEXT_CLARO_WHITE_PCT,
+  textClaroContrast,
   whitePointStretch,
+  whitePointStretchPct,
 } from '../core/imageModes';
 import type { EnhanceMode } from '../core/types';
 
@@ -482,8 +484,8 @@ export function claheGray(
 // ---------------------------------------------------------------------------
 
 /** Aplica el modo al warped RGBA (dims w×h). Salida SIEMPRE RGBA opaca:
- *  color/natural conservan el croma (ganancia aplicada a los 3 canales),
- *  gris es luma, bw es 0/255 puro. Sin cv.Mat (D-F5). Nunca lanza con dims
+ *  color/natural/text conservan el croma (ganancia aplicada a los 3 canales),
+ *  gris es luma. Sin cv.Mat (D-F5). Nunca lanza con dims
  *  inválidas: devuelve el arreglo vacío (el worker valida antes). */
 export function enhanceToRgba(
   data: Uint8ClampedArray,
@@ -500,13 +502,24 @@ export function enhanceToRgba(
     const enhanced = claheGray(corrected, w, h);
     return grayToRgba(enhanced, w, h);
   }
-  if (mode === 'bw') {
-    const corrected = correctedGray(gray, w, h);
-    const bin = sauvolaBinarize(corrected, w, h);
-    return grayToRgba(bin, w, h);
-  }
-
   const shadow = estimateShadowModel(gray, w, h);
+
+  if (mode === 'text') {
+    // Texto claro (D-F5-c, 2026-09-26 — petición humana, video Adobe Scan):
+    // sombras fuera → fondo a blanco con percentil agresivo → S-curve que
+    // oscurece la tinta SIN binarización dura (antialias conservado). El gain
+    // ink/src aplica la curva también al croma (papel blanco, contenido
+    // dominante en oscuro — el look del filtro).
+    const grayS = correctedGrayWithModel(gray, shadow, w, h);
+    const wp = whitePointStretchPct(grayS, TEXT_CLARO_WHITE_PCT);
+    const ink = textClaroContrast(wp);
+    const gainW = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const src = grayS[i]!;
+      gainW[i] = src > 0 ? ink[i]! / src : 1;
+    }
+    return applyModelAndGainToRgba(data, shadow, gainW, w, h);
+  }
 
   if (mode === 'natural') {
     const grayS = correctedGrayWithModel(gray, shadow, w, h);
